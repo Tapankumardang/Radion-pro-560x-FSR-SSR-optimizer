@@ -1,4 +1,11 @@
-# Radeon Pro 560X & Core i9-8950HK Performance Center
+# 🚀 Radeon Pro 560X & Core i9-8950HK Performance Center
+
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20(Boot%20Camp)-0078D6?logo=windows&logoColor=white)](https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer)
+[![Hardware](https://img.shields.io/badge/Device-MacBook%20Pro%2015%22%20(2018)-555555?logo=apple&logoColor=white)](https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer)
+[![GPU](https://img.shields.io/badge/GPU-AMD%20Radeon%20Pro%20560X%20(4GB)-ED1C24?logo=amd&logoColor=white)](https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer)
+[![CPU](https://img.shields.io/badge/CPU-Intel%20Core%20i9--8950HK-0071C5?logo=intel&logoColor=white)](https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer)
+[![FSR](https://img.shields.io/badge/Upscaler-AMD%20FidelityFX%20FSR-FF6F00)](https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer)
+[![License](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
 
 A complete graphical utility and optimization suite engineered specifically for the **15-inch MacBook Pro (2018)** running **Windows 10 / 11 (Boot Camp)** equipped with:
 * **GPU:** AMD Radeon Pro 560X (4 GB GDDR5, Polaris architecture)
@@ -6,12 +13,22 @@ A complete graphical utility and optimization suite engineered specifically for 
 
 ---
 
+## ⌨️ Global In-Game Hotkeys (MacBook Pro Boot Camp)
+
+| Hotkey | Action | Description |
+| :--- | :--- | :--- |
+| **`Option + Shift + A`** *(or `Alt + Shift + A`)* | **Toggle FSR & SSR Upscaler** | Instantly upscale any windowed game to full Retina resolution with AMD FidelityFX FSR & RCAS Sharpening. |
+| **`Option + Shift + H`** *(or `Alt + Shift + H`)* | **Toggle Floating Mini-HUD** | Show/hide the live floating hardware monitor (FPS, 1004 MHz GPU clock, CPU %, RAM load, click-through PIN). |
+| **`Option + Shift + D`** *(or `Alt + Shift + D`)* | **Toggle Magpie FPS Toolbar** | Real-time FPS, frametime, and render latency overlay. |
+
+---
+
 ## 🖥️ Launching the Graphical Application (GUI)
 
 You have a native, dark-themed Windows desktop application ready to run:
 
-👉 **Simply double-click [`RadeonOptimizer.exe`](file:///e:/apps/Graphic%20card%20improve/RadeonOptimizer.exe)**
-*(Or double-click [`Launch-UI.bat`](file:///e:/apps/Graphic%20card%20improve/Launch-UI.bat))*
+👉 **Simply double-click [`RadeonOptimizer.exe`](https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer/blob/main/RadeonOptimizer.exe)**
+*(Or double-click `Launch-UI.bat`)*
 
 ### Features of the Unified All-in-One Application:
 
