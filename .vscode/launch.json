@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Radeon Optimizer GUI",
+      "type": "clr",
+      "request": "launch",
+      "preLaunchTask": "Build RadeonOptimizer (Default Build)",
+      "program": "${workspaceFolder}/RadeonOptimizer.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build RadeonOptimizer (Default Build)",
+      "type": "shell",
+      "command": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe",
+      "args": [
+        "/target:winexe",
+        "/win32manifest:${workspaceFolder}\\app.manifest",
+        "/out:${workspaceFolder}\\RadeonOptimizer.exe",
+        "${workspaceFolder}\\RadeonProOptimizer.cs"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Run RadeonOptimizer Application",
+      "type": "shell",
+      "command": "${workspaceFolder}\\RadeonOptimizer.exe",
+      "dependsOn": "Build RadeonOptimizer (Default Build)",
+      "problemMatcher": []
+    }
+  ]
+}

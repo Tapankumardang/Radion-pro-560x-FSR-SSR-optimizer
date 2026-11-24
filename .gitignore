@@ -1,0 +1,19 @@
+# Build outputs and temporary files
+*.tmp
+*.suo
+*.user
+*.pdb
+.vs/
+[Bb]in/
+[Oo]bj/
+
+# Logs and runtime caches
+*.log
+Benchmark_Report_*.txt
+FSR-Engine/logs/
+FSR-Engine/cache/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
