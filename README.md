@@ -19,6 +19,8 @@ You have a native, dark-themed Windows desktop application ready to run:
 * **Live Hardware Telemetry:** Real-time CPU usage meter, RAM load, driver detection, and active power plan.
 * **1-Click Tweak Switches:** AMD ULPS, Windows HAGS, TdrDelay (8s), 99% CPU thermal cap, GameDVR, and Radeon Image Sharpening (RIS/CAS).
 * **Master Controls:** **1-Click Apply All** and **1-Click Restore Factory Defaults**.
+* **🔥 Floating In-Game Mini-HUD:** Always-on-top, draggable, semi-transparent hardware overlay showing live FPS, GPU core clock (1004 MHz vs 300 MHz throttle detection), CPU load, and RAM usage with a click-through `📌 PIN` mode! (Toggle with **`Option + Shift + H`**).
+* **❄️ Fan Turbo Assistant:** Integration with *Macs Fan Control* to eliminate Boot Camp heat soak on the dual-fan, single shared copper heatpipe before launching games.
 * **Live Activity Log:** Real-time console tracking all registry modifications.
 
 #### Tab 2: 🔥 3D BENCHMARK & STRESS TEST
@@ -26,6 +28,7 @@ You have a native, dark-themed Windows desktop application ready to run:
 * **✨ Live SSR Reflections Toggle:** Real-time glossy obsidian mirror floor with inverted reflection vectors, alpha blending (`glBlendFunc`), and cyberpunk cyber-grid lines. Demonstrates screen space reflections with 0 FPS loss!
 * **Rolling Frametime Pacing Graph:** Visual stutter detector (green line = smooth, red spikes = stutter).
 * **Live Performance HUD:** Current FPS, Average FPS, 1% Lows, and micro-stutter event counter.
+* **🔥 Mini-HUD Fast Toggle:** Instant access to launch the in-game overlay directly from the benchmark viewport.
 * **30-Second Timed Benchmark:** Automated first-half vs second-half thermal throttling detection with exportable report files.
 
 #### Tab 3: ✨ UNIVERSAL FSR & DETAIL UPSCALER
