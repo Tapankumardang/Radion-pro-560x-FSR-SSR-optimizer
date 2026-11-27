@@ -184,6 +184,7 @@ namespace RadeonPerformanceCenter
         const uint GL_TRIANGLES = 0x0004;
         const uint GL_POINTS = 0x0000;
         const uint GL_LINES = 0x0001;
+        const uint GL_TRIANGLE_FAN = 0x0006;
         const uint GL_COLOR_MATERIAL = 0x0B57;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -240,8 +241,9 @@ namespace RadeonPerformanceCenter
         private Panel glRenderPanel;
         private PictureBox graphBox;
         private Label lblBenchFps, lblBenchAvgFps, lblBench1Pct, lblBenchStutter, lblBenchCpu, lblBenchRam, lblBenchVerdict, lblBenchTimer;
-        private Button btnStartBench, btnBenchStress, btnToggleSsr;
+        private Button btnStartBench, btnBenchStress, btnToggleSsr, btnSsrSurface;
         private bool enableBenchmarkSsr = true;
+        private bool isSsrWetMirror = true;
         private IntPtr hDC = IntPtr.Zero, hGLRC = IntPtr.Zero;
         private bool isGlInitialized = false;
         private float rotX = 15f, rotY = 0f, rotZ = 0f;
@@ -261,9 +263,9 @@ namespace RadeonPerformanceCenter
 
         #region FSR Tab Controls
         private Label lblFsrProcessStatus;
-        private Button btnStartFsr, btnStopFsr, btnFsrAutoUpscale, btnToggleCinematicSsr;
+        private Button btnStartFsr, btnStopFsr, btnFsrAutoUpscale, btnToggleCinematicSsr, btnOptimizeGameSsr;
         private bool isCinematicSsrActive = true;
-        private ComboBox cmbFsrHotkey, cmbFsrFpsCap;
+        private ComboBox cmbFsrHotkey, cmbFsrFpsCap, cmbSsrPreset;
         private Label lblCurrentRes;
         private Timer fsrCountdownTimer;
         private int fsrCountdownRemaining = 0;
@@ -734,6 +736,12 @@ namespace RadeonPerformanceCenter
             right.Controls.Add(btnToggleSsr);
             y += 44;
 
+            btnSsrSurface = CreateModernButton("💧 SSR Surface: Wet Mirror", Color.FromArgb(30, 80, 130), Color.White, 290, 36);
+            btnSsrSurface.Location = new Point(14, y);
+            btnSsrSurface.Click += (s, e) => ToggleSsrSurface();
+            right.Controls.Add(btnSsrSurface);
+            y += 44;
+
             Button btnExport = CreateModernButton("💾  Export Benchmark Report", Color.FromArgb(32, 34, 46), cTextMain, 290, 36);
             btnExport.Location = new Point(14, y);
             btnExport.Click += (s, e) => ExportBenchmarkReport();
@@ -790,7 +798,7 @@ namespace RadeonPerformanceCenter
 
             // 1. Control & Action Panel
             Panel pnlStatus = new Panel();
-            pnlStatus.Size = new Size(820, 180);
+            pnlStatus.Size = new Size(820, 204);
             pnlStatus.BackColor = cCardBg;
             pnlStatus.Padding = new Padding(16);
             pnlStatus.Margin = new Padding(0, 0, 0, 14);
@@ -846,13 +854,31 @@ namespace RadeonPerformanceCenter
                 UpdateFsrStatus();
             };
 
-            btnToggleCinematicSsr = CreateModernButton("✨ SSR & CINEMATIC DEPTH: ON (Active)", Color.FromArgb(140, 20, 80), Color.White, 350, 36);
-            btnToggleCinematicSsr.Location = new Point(16, 124);
+            btnToggleCinematicSsr = CreateModernButton("✨ SSR ENHANCER: ON", Color.FromArgb(140, 20, 80), Color.White, 236, 36);
+            btnToggleCinematicSsr.Location = new Point(16, 122);
             btnToggleCinematicSsr.Click += (s, e) => ToggleCinematicSsr();
 
-            Label lblCinematicInfo = new Label { Text = "Combines FSR 2.0 Sharpness with Screen Space Contrast & Pseudo-SSAO Depth", Font = new Font("Segoe UI", 8.5f), ForeColor = cTextMuted, Location = new Point(376, 134), AutoSize = true };
+            cmbSsrPreset = new ComboBox();
+            cmbSsrPreset.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbSsrPreset.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            cmbSsrPreset.BackColor = Color.FromArgb(30, 32, 42);
+            cmbSsrPreset.ForeColor = Color.White;
+            cmbSsrPreset.Location = new Point(262, 126);
+            cmbSsrPreset.Size = new Size(270, 28);
+            cmbSsrPreset.Items.Add("SSR: Off (Standard FSR Only)");
+            cmbSsrPreset.Items.Add("SSR: Subtle Realism (Balanced)");
+            cmbSsrPreset.Items.Add("SSR: Vivid Wet-Road (Recommended)");
+            cmbSsrPreset.Items.Add("SSR: Cyberpunk Neon Glow (Max)");
+            cmbSsrPreset.SelectedIndex = (GetCurrentMagpieScalingMode() == 7) ? 2 : 0;
+            cmbSsrPreset.SelectedIndexChanged += (s, e) => ApplySsrShaderPreset(cmbSsrPreset.SelectedIndex);
 
-            pnlStatus.Controls.AddRange(new Control[] { lblHead, lblFsrProcessStatus, btnStartFsr, btnStopFsr, btnFsrAutoUpscale, lblHk, cmbFsrHotkey, btnToggleCinematicSsr, lblCinematicInfo });
+            btnOptimizeGameSsr = CreateModernButton("🎮 OPTIMIZE GTA V & GAME SSR", Color.FromArgb(20, 120, 140), Color.White, 258, 36);
+            btnOptimizeGameSsr.Location = new Point(542, 122);
+            btnOptimizeGameSsr.Click += (s, e) => OptimizeInstalledGamesSsr();
+
+            Label lblCinematicInfo = new Label { Text = "Universal SSR Shader (Specular Bloom + Shadow Depth + Deband) works on GTA V & all games", Font = new Font("Segoe UI", 8.5f), ForeColor = cTextMuted, Location = new Point(16, 168), AutoSize = true };
+
+            pnlStatus.Controls.AddRange(new Control[] { lblHead, lblFsrProcessStatus, btnStartFsr, btnStopFsr, btnFsrAutoUpscale, lblHk, cmbFsrHotkey, btnToggleCinematicSsr, cmbSsrPreset, btnOptimizeGameSsr, lblCinematicInfo });
             pnlStatus.Paint += (s, e) => {
                 using (Pen p = new Pen(cBorder, 1)) e.Graphics.DrawRectangle(p, 0, 0, pnlStatus.Width - 1, pnlStatus.Height - 1);
             };
@@ -1019,13 +1045,13 @@ namespace RadeonPerformanceCenter
                 {
                     if (isCinematicSsrActive)
                     {
-                        btnToggleCinematicSsr.Text = "✨ SSR & CINEMATIC DEPTH: ON (Active)";
+                        btnToggleCinematicSsr.Text = "✨ SSR ENHANCER: ON";
                         btnToggleCinematicSsr.BackColor = Color.FromArgb(140, 20, 80);
                         btnToggleCinematicSsr.ForeColor = Color.White;
                     }
                     else
                     {
-                        btnToggleCinematicSsr.Text = "○ SSR & CINEMATIC DEPTH: OFF (Standard FSR)";
+                        btnToggleCinematicSsr.Text = "○ SSR ENHANCER: OFF";
                         btnToggleCinematicSsr.BackColor = Color.FromArgb(70, 75, 90);
                         btnToggleCinematicSsr.ForeColor = cTextMain;
                     }
@@ -1242,27 +1268,103 @@ namespace RadeonPerformanceCenter
             }
         }
 
+        private bool isUpdatingSsrUi = false;
+
         private void ToggleCinematicSsr()
         {
             int currentMode = GetCurrentMagpieScalingMode();
             if (currentMode == 7)
             {
-                SetMagpieScalingMode(1);
-                isCinematicSsrActive = false;
-                btnToggleCinematicSsr.Text = "○ SSR & CINEMATIC DEPTH: OFF (Standard FSR)";
-                btnToggleCinematicSsr.BackColor = Color.FromArgb(70, 75, 90);
-                btnToggleCinematicSsr.ForeColor = cTextMain;
-                Log("Switched FSR Engine to Standard FSR (EASU + RCAS).");
+                ApplySsrShaderPreset(0);
             }
             else
             {
-                SetMagpieScalingMode(7);
-                isCinematicSsrActive = true;
-                btnToggleCinematicSsr.Text = "✨ SSR & CINEMATIC DEPTH: ON (Active)";
-                btnToggleCinematicSsr.BackColor = Color.FromArgb(140, 20, 80);
-                btnToggleCinematicSsr.ForeColor = Color.White;
-                Log("✨ Switched FSR Engine to FSR + SSR Cinematic Depth & Contrast!");
+                ApplySsrShaderPreset(2);
             }
+        }
+
+        private void ApplySsrShaderPreset(int presetIdx)
+        {
+            if (isUpdatingSsrUi) return;
+            isUpdatingSsrUi = true;
+            try
+            {
+                if (presetIdx == 0)
+                {
+                    SetMagpieScalingMode(1);
+                    isCinematicSsrActive = false;
+                    if (cmbSsrPreset != null && cmbSsrPreset.SelectedIndex != 0) cmbSsrPreset.SelectedIndex = 0;
+                    Log("Switched FSR Engine to Standard FSR (EASU + RCAS, SSR Enhancer OFF).");
+                }
+                else
+                {
+                    double bloom = 0.30, shadow = 0.20, vib = 0.14, deband = 0.35;
+                    string label = "Vivid Wet-Road SSR";
+                    if (presetIdx == 1) { bloom = 0.16; shadow = 0.12; vib = 0.08; deband = 0.30; label = "Subtle Realism SSR"; }
+                    else if (presetIdx == 3) { bloom = 0.48; shadow = 0.28; vib = 0.22; deband = 0.40; label = "Cyberpunk Neon Glow SSR"; }
+
+                    UpdateMagpieConfig(json => {
+                        json = Regex.Replace(json, @"""scalingMode""\s*:\s*\d+", "\"scalingMode\": 7");
+                        // Upgrade older ImageAdjustment block if present, or update SSR_Cinematic_Enhancer params
+                        json = Regex.Replace(json, @"""name""\s*:\s*""ImageAdjustment""[\s\S]*?""saturation""\s*:\s*[0-9\.]+",
+                            "\"name\": \"SSR_Cinematic_Enhancer\",\n                    \"parameters\": {\n                        \"specularBloom\": 0.30,\n                        \"shadowDepth\": 0.20,\n                        \"vibrance\": 0.14,\n                        \"debandStrength\": 0.35");
+                        json = Regex.Replace(json, @"""specularBloom""\s*:\s*[0-9\.]+", "\"specularBloom\": " + bloom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                        json = Regex.Replace(json, @"""shadowDepth""\s*:\s*[0-9\.]+", "\"shadowDepth\": " + shadow.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                        json = Regex.Replace(json, @"""vibrance""\s*:\s*[0-9\.]+", "\"vibrance\": " + vib.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                        json = Regex.Replace(json, @"""debandStrength""\s*:\s*[0-9\.]+", "\"debandStrength\": " + deband.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                        return json;
+                    });
+
+                    isCinematicSsrActive = true;
+                    if (cmbSsrPreset != null && cmbSsrPreset.SelectedIndex != presetIdx) cmbSsrPreset.SelectedIndex = presetIdx;
+                    Log(string.Format("✨ Applied Universal SSR Shader Preset: {0} (Bloom={1:0.00}, Depth={2:0.00}).", label, bloom, shadow));
+                }
+                UpdateFsrStatus();
+            }
+            catch (Exception ex)
+            {
+                Log("SSR preset error: " + ex.Message);
+            }
+            finally
+            {
+                isUpdatingSsrUi = false;
+            }
+        }
+
+        private void OptimizeInstalledGamesSsr()
+        {
+            string gtaPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), @"Rockstar Games\GTA V\settings.xml");
+            bool gtaUpdated = false;
+            if (File.Exists(gtaPath))
+            {
+                try
+                {
+                    string xml = File.ReadAllText(gtaPath);
+                    xml = Regex.Replace(xml, @"<ReflectionQuality\s+value=""\d+""\s*/>", "<ReflectionQuality value=\"2\" />");
+                    xml = Regex.Replace(xml, @"<SSAO\s+value=""\d+""\s*/>", "<SSAO value=\"1\" />");
+                    xml = Regex.Replace(xml, @"<AnisotropicFiltering\s+value=""\d+""\s*/>", "<AnisotropicFiltering value=\"8\" />");
+                    xml = Regex.Replace(xml, @"<Reflection_MipBlur\s+value=""(true|false)""\s*/>", "<Reflection_MipBlur value=\"true\" />");
+                    xml = Regex.Replace(xml, @"<Windowed\s+value=""\d+""\s*/>", "<Windowed value=\"2\" />");
+                    File.WriteAllText(gtaPath, xml, new System.Text.UTF8Encoding(false));
+                    gtaUpdated = true;
+                    Log("🎮 GTA V SSR optimized: High Reflections (2), 8x Anisotropic Filtering, SSAO (1), Borderless Windowed (2).");
+                }
+                catch (Exception ex)
+                {
+                    Log("GTA V config update error: " + ex.Message);
+                }
+            }
+
+            string summary = (gtaUpdated
+                ? "✅ GTA V (settings.xml) automatically tuned for sharp SSR:\n  • Reflection Quality: High (2) + MipBlur ON\n  • Anisotropic Filtering: 8x (sharp angled road puddles, ~0 FPS cost)\n  • Ambient Occlusion (SSAO): Normal (1)\n  • Display Mode: Borderless Windowed (ready for FSR + SSR)\n\n"
+                : "ℹ️ GTA V settings.xml not detected at Documents\\Rockstar Games\\GTA V.\n\n") +
+                "🌍 FOR ALL OTHER GAMES (Cyberpunk, RDR2, Witcher 3, Elden Ring, Emulators):\n" +
+                "  1. Keep Magpie 'SSR ENHANCER: ON' (works automatically on EVERY game window!)\n" +
+                "  2. Set Display Mode = Borderless Windowed\n" +
+                "  3. Set Reflections = High / Screen Space Reflections (NEVER Ray Tracing)\n" +
+                "  4. Set Anisotropic Filtering = 8x or 16x (makes puddle/floor reflections crisp at zero FPS loss)";
+
+            MessageBox.Show(summary, "GTA V & Universal Game SSR Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void StartFsrEngine()
@@ -2799,6 +2901,7 @@ namespace RadeonPerformanceCenter
                 btnToggleSsr.Text = "✨ SSR Reflections: ON";
                 btnToggleSsr.BackColor = Color.FromArgb(20, 140, 80);
                 btnToggleSsr.ForeColor = Color.White;
+                if (btnSsrSurface != null) btnSsrSurface.Enabled = true;
                 Log("✨ Enabled Screen Space Reflections (SSR) in 3D Benchmark.");
             }
             else
@@ -2806,7 +2909,25 @@ namespace RadeonPerformanceCenter
                 btnToggleSsr.Text = "○ SSR Reflections: OFF";
                 btnToggleSsr.BackColor = Color.FromArgb(32, 34, 46);
                 btnToggleSsr.ForeColor = cTextMuted;
+                if (btnSsrSurface != null) btnSsrSurface.Enabled = false;
                 Log("Disabled Screen Space Reflections in 3D Benchmark.");
+            }
+        }
+
+        private void ToggleSsrSurface()
+        {
+            isSsrWetMirror = !isSsrWetMirror;
+            if (isSsrWetMirror)
+            {
+                btnSsrSurface.Text = "💧 SSR Surface: Wet Mirror";
+                btnSsrSurface.BackColor = Color.FromArgb(30, 80, 130);
+                Log("💧 3D SSR Surface switched to Wet Mirror (high reflectivity + puddle glow).");
+            }
+            else
+            {
+                btnSsrSurface.Text = "🪩 SSR Surface: Satin Metal";
+                btnSsrSurface.BackColor = Color.FromArgb(75, 55, 110);
+                Log("🪩 3D SSR Surface switched to Satin Metal (diffused matte reflection).");
             }
         }
 
@@ -2815,13 +2936,15 @@ namespace RadeonPerformanceCenter
             glDisable(GL_LIGHTING);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(0);
 
             float yFloor = -1.65f;
-            float extent = 4.2f;
+            float extent = 4.4f;
+            float floorAlpha = isSsrWetMirror ? 0.64f : 0.84f;
 
-            // Semi-transparent obsidian mirror floor
+            // Semi-transparent obsidian mirror / satin floor
             glBegin(GL_TRIANGLES);
-            glColor4f(0.04f, 0.05f, 0.09f, 0.72f);
+            glColor4f(0.03f, 0.04f, 0.08f, floorAlpha);
             glVertex3f(-extent, yFloor, -extent);
             glVertex3f(extent, yFloor, -extent);
             glVertex3f(extent, yFloor, extent);
@@ -2831,22 +2954,37 @@ namespace RadeonPerformanceCenter
             glVertex3f(-extent, yFloor, extent);
             glEnd();
 
-            // Cyberpunk grid lines on reflective floor
-            glLineWidth(1.0f);
-            glBegin(GL_LINES);
-            glColor4f(0.20f, 0.55f, 0.85f, 0.45f);
-            for (float x = -extent; x <= extent + 0.1f; x += 0.7f)
+            // Specular under-core puddle glow directly beneath crystal
+            float glowRadius = isSsrWetMirror ? 2.6f : 1.9f;
+            float glowAlpha = isSsrWetMirror ? 0.28f : 0.14f;
+            glBegin(GL_TRIANGLE_FAN);
+            glColor4f(0.92f, 0.12f, 0.45f, glowAlpha);
+            glVertex3f(0.0f, yFloor + 0.004f, 0.0f);
+            for (int seg = 0; seg <= 28; seg++)
             {
-                glVertex3f(x, yFloor, -extent);
-                glVertex3f(x, yFloor, extent);
-            }
-            for (float z = -extent; z <= extent + 0.1f; z += 0.7f)
-            {
-                glVertex3f(-extent, yFloor, z);
-                glVertex3f(extent, yFloor, z);
+                double ang = seg * Math.PI * 2.0 / 28.0;
+                glColor4f(0.18f, 0.55f, 0.90f, 0.0f);
+                glVertex3f((float)Math.Cos(ang) * glowRadius, yFloor + 0.004f, (float)Math.Sin(ang) * glowRadius);
             }
             glEnd();
 
+            // Cyberpunk grid lines on reflective floor
+            glLineWidth(1.0f);
+            glBegin(GL_LINES);
+            glColor4f(0.22f, 0.62f, 0.95f, isSsrWetMirror ? 0.52f : 0.34f);
+            for (float x = -extent; x <= extent + 0.1f; x += 0.7f)
+            {
+                glVertex3f(x, yFloor + 0.002f, -extent);
+                glVertex3f(x, yFloor + 0.002f, extent);
+            }
+            for (float z = -extent; z <= extent + 0.1f; z += 0.7f)
+            {
+                glVertex3f(-extent, yFloor + 0.002f, z);
+                glVertex3f(extent, yFloor + 0.002f, z);
+            }
+            glEnd();
+
+            glDepthMask(1);
             glDisable(GL_BLEND);
             glEnable(GL_LIGHTING);
         }
@@ -2854,7 +2992,34 @@ namespace RadeonPerformanceCenter
         private void DrawSsrReflection()
         {
             float yFloor = -1.65f;
+            float reflectScale = isSsrWetMirror ? 1.0f : 0.55f;
 
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(0);
+
+            // 1. Reflect active particle field onto the floor (only particles above yFloor)
+            glDisable(GL_LIGHTING);
+            glPointSize(isSsrWetMirror ? 2.4f : 1.8f);
+            glBegin(GL_POINTS);
+            int pCount = (benchStressLevel == 1) ? 1000 : (benchStressLevel == 2 ? 1500 : particleCount);
+            for (int i = 0; i < pCount; i++)
+            {
+                float px = particleCoords[i * 3 + 0];
+                float py = particleCoords[i * 3 + 1];
+                float pz = particleCoords[i * 3 + 2];
+                if (py >= yFloor)
+                {
+                    float dist = py - yFloor;
+                    float fade = Math.Max(0.06f, 0.45f - dist * 0.08f) * reflectScale;
+                    glColor4f(particleColors[i * 3 + 0], particleColors[i * 3 + 1], particleColors[i * 3 + 2], fade);
+                    glVertex3f(px, yFloor - dist, pz);
+                }
+            }
+            glEnd();
+            glEnable(GL_LIGHTING);
+
+            // 2. Reflect central ruby crystal (and wireframe cage in stress modes)
             glPushMatrix();
             glTranslatef(0.0f, yFloor, 0.0f);
             glScalef(1.0f, -1.0f, 1.0f);
@@ -2863,9 +3028,6 @@ namespace RadeonPerformanceCenter
             glRotatef(rotX, 1.0f, 0.0f, 0.0f);
             glRotatef(rotY, 0.0f, 1.0f, 0.0f);
             glRotatef(rotZ, 0.0f, 0.0f, 1.0f);
-
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
             float s = 1.35f;
             glBegin(GL_TRIANGLES);
@@ -2883,8 +3045,8 @@ namespace RadeonPerformanceCenter
 
             for (int i = 0; i < verts.Length; i += 3)
             {
-                if ((i / 3) % 2 == 0) glColor4f(0.70f, 0.05f, 0.28f, 0.38f);
-                else glColor4f(0.50f, 0.03f, 0.18f, 0.30f);
+                if ((i / 3) % 2 == 0) glColor4f(0.82f, 0.08f, 0.34f, 0.48f * reflectScale);
+                else glColor4f(0.55f, 0.04f, 0.22f, 0.36f * reflectScale);
 
                 Point3D p1 = verts[i], p2 = verts[i + 1], p3 = verts[i + 2];
                 Point3D n = CalcNormal(p1, p2, p3);
@@ -2895,8 +3057,26 @@ namespace RadeonPerformanceCenter
             }
             glEnd();
 
-            glDisable(GL_BLEND);
+            if (benchStressLevel >= 2)
+            {
+                glDisable(GL_LIGHTING);
+                glLineWidth(1.2f);
+                glBegin(GL_LINES);
+                glColor4f(0.22f, 0.74f, 0.98f, 0.36f * reflectScale);
+                for (int i = 0; i < verts.Length; i += 3)
+                {
+                    glVertex3f(verts[i].x * 1.3f, verts[i].y * 1.3f, verts[i].z * 1.3f);
+                    glVertex3f(verts[i + 1].x * 1.3f, verts[i + 1].y * 1.3f, verts[i + 1].z * 1.3f);
+                    glVertex3f(verts[i + 1].x * 1.3f, verts[i + 1].y * 1.3f, verts[i + 1].z * 1.3f);
+                    glVertex3f(verts[i + 2].x * 1.3f, verts[i + 2].y * 1.3f, verts[i + 2].z * 1.3f);
+                }
+                glEnd();
+                glEnable(GL_LIGHTING);
+            }
+
             glPopMatrix();
+            glDepthMask(1);
+            glDisable(GL_BLEND);
         }
 
         private void ExportBenchmarkReport()

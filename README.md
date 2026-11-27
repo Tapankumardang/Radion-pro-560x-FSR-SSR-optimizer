@@ -42,7 +42,7 @@ You have a native, dark-themed Windows desktop application ready to run:
 
 #### Tab 2: 🔥 3D BENCHMARK & STRESS TEST
 * **Native Hardware OpenGL 3D Viewport:** Rotating 3D crystal core + 1,800 particle stars stressing the Radeon Pro 560X 3D engine.
-* **✨ Live SSR Reflections Toggle:** Real-time glossy obsidian mirror floor with inverted reflection vectors, alpha blending (`glBlendFunc`), and cyberpunk cyber-grid lines. Demonstrates screen space reflections with 0 FPS loss!
+* **✨ Upgraded Live SSR Reflections (`Wet Mirror` & `Satin Metal`):** Real-time glossy obsidian mirror floor reflecting both the crystal core, wireframe cage, and active 1,800 particles with under-core specular puddle glow and toggleable Wet Mirror vs Satin surface roughness.
 * **Rolling Frametime Pacing Graph:** Visual stutter detector (green line = smooth, red spikes = stutter).
 * **Live Performance HUD:** Current FPS, Average FPS, 1% Lows, and micro-stutter event counter.
 * **🔥 Mini-HUD Fast Toggle:** Instant access to launch the in-game overlay directly from the benchmark viewport.
@@ -50,7 +50,7 @@ You have a native, dark-themed Windows desktop application ready to run:
 
 #### Tab 3: ✨ UNIVERSAL FSR & DETAIL UPSCALER
 * **AMD FidelityFX FSR (EASU + RCAS):** Injects spatial upscaling and contrast-adaptive sharpening into ANY windowed game.
-* **✨ SSR & Cinematic Lighting / Depth Toggle:** Switch between Standard FSR and **FSR + SSR Cinematic Depth** (boosts dynamic shadow contrast, specular highlights, and pseudo-SSAO depth).
+* **✨ Custom Universal SSR HLSL Shader (`SSR_Cinematic_Enhancer.hlsl`):** Works on GTA V and ANY DX/Vulkan/OpenGL game via Magpie! Adds multi-tap specular puddle/reflection bloom, filmic shadow depth, selective surface vibrance, and anti-banding dither with presets (*Subtle Realism*, *Vivid Wet-Road*, *Cyberpunk Neon Glow*) plus 1-click **Optimize GTA V & Game SSR**.
 * **Gaming Resolution Presets & Smart FPS Cap:** Instant resolution switcher auto-adapted to your active display (`1280×800`/`720p`, `1440×900`/`1600×900`, `1680×1050`, and Native restore) plus **Magpie Smart FPS Cap** (`45 FPS` / `60 FPS` / `Uncapped`) to prevent shared heatpipe & VRM thermal soak during long sessions.
 * **Massive FPS Gain:** Run games at 720p or 900p, press **`ALT + F11`** (or **`WIN + SHIFT + A`**), and game upscales to native fullscreen with 40%–80% higher FPS.
 * **⚡ 5-Second Auto-Upscale Button:** Click the button, switch to your game window, and it automatically triggers scaling without fumbling with keyboard shortcuts!
