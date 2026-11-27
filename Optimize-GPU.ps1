@@ -59,6 +59,12 @@ Write-Host "  -> Set TdrDelay = 8 (prevents false GPU driver timeout crashes)" -
 Set-ItemProperty -Path $gfxPath -Name "HwSchMode" -Value 2 -Type DWord -Force
 Write-Host "  -> Set HwSchMode = 2 (Hardware-Accelerated GPU Scheduling enabled)" -ForegroundColor Green
 
+# Disable Windows MPO (OverlayTestMode = 5) to stop borderless & FSR flicker/stutter
+$dwmPath = "HKLM:\SOFTWARE\Microsoft\Windows\Dwm"
+if (-not (Test-Path $dwmPath)) { New-Item -Path $dwmPath -Force | Out-Null }
+Set-ItemProperty -Path $dwmPath -Name "OverlayTestMode" -Value 5 -Type DWord -Force
+Write-Host "  -> Set OverlayTestMode = 5 (Disabled Windows MPO overlay stutter)" -ForegroundColor Green
+
 # 3. Multimedia & System Responsiveness for 3D/Gaming workloads
 Write-Host "`n[3/5] Setting system responsiveness for high-priority 3D rendering..." -ForegroundColor Yellow
 $sysProfilePath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
@@ -92,43 +98,58 @@ Write-Host "  -> Enabled Windows Game Mode" -ForegroundColor Green
 # 5. Create & Configure Dedicated "Radeon GPU Optimized" Power Plan
 Write-Host "`n[5/5] Configuring dedicated Power Plan for thermal headroom..." -ForegroundColor Yellow
 
-# Try duplicating Ultimate Performance first, fallback to High Performance
-$ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
-$highPerfGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
-
-$dupOutput = powercfg -duplicatescheme $ultimateGuid 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $dupOutput) {
-    $dupOutput = powercfg -duplicatescheme $highPerfGuid 2>$null
+# Reuse existing custom plan if already created so repeated runs don't duplicate schemes
+$planGuid = $null
+$existingSchemes = powercfg -list
+foreach ($line in ($existingSchemes -split "`n")) {
+    if ($line -like "*Radeon Pro 560X - Optimized*") {
+        $m = [regex]::Match($line, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+        if ($m.Success) { $planGuid = $m.Value; break }
+    }
 }
 
-$newGuidMatch = [regex]::Match($dupOutput, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-if ($newGuidMatch.Success) {
-    $planGuid = $newGuidMatch.Value
-    powercfg -changename $planGuid "Radeon Pro 560X - Optimized" "Tuned for maximum sustained GPU boost clock and reduced thermal throttling."
+if (-not $planGuid) {
+    # Try duplicating Ultimate Performance first, fallback to High Performance
+    $ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61"
+    $highPerfGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
+
+    $dupOutput = powercfg -duplicatescheme $ultimateGuid 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $dupOutput) {
+        $dupOutput = powercfg -duplicatescheme $highPerfGuid 2>$null
+    }
+
+    $newGuidMatch = [regex]::Match($dupOutput, "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+    if ($newGuidMatch.Success) {
+        $planGuid = $newGuidMatch.Value
+        powercfg -changename $planGuid "Radeon Pro 560X - Optimized" "Tuned for maximum sustained GPU boost clock and reduced thermal throttling."
+    }
+}
+
+if ($planGuid) {
     powercfg -setactive $planGuid
 
     # Set PCIe Link State Power Management to OFF (No throttling of PCIe lanes)
     # SUB_PCIEXPRESS: 501a4d13-42af-4429-9e56-4784f8da68f4, EE12F906: ee12f906-d277-404b-b6da-e5fa1a576df5
     powercfg -setacvalueindex $planGuid 501a4d13-42af-4429-9e56-4784f8da68f4 ee12f906-d277-404b-b6da-e5fa1a576df5 0
 
-    # Cap Maximum Processor State (AC) to 99%
-    # This disables aggressive 80W+ Intel Turbo spikes that cause the shared heatpipe
-    # to overheat and throttle the Radeon Pro 560X down to 300MHz.
-    # SUB_PROCESSOR: 54533251-82be-4824-96c1-47b60b740d00, PROCTHROTTLEMAX: bc5038f7-23e0-4960-96da-33abaf5935ec
+    # Cap Maximum Processor State (AC) to 99% & unpark all 12 CPU threads (CPMINCORES = 100%)
+    # SUB_PROCESSOR: 54533251-82be-4824-96c1-47b60b740d00
     powercfg -setacvalueindex $planGuid 54533251-82be-4824-96c1-47b60b740d00 bc5038f7-23e0-4960-96da-33abaf5935ec 99
+    powercfg -setacvalueindex $planGuid 54533251-82be-4824-96c1-47b60b740d00 0cc5b647-c1df-4637-891a-dec35c318583 100
 
     # Re-apply active
     powercfg -setactive $planGuid
-    Write-Host "  -> Created and activated power plan: 'Radeon Pro 560X - Optimized'" -ForegroundColor Green
+    Write-Host "  -> Activated power plan: 'Radeon Pro 560X - Optimized'" -ForegroundColor Green
     Write-Host "  -> Set PCIe Link State = OFF" -ForegroundColor Green
-    Write-Host "  -> Set Max CPU State = 99% (Frees ~25W thermal capacity for GPU sustained boost)" -ForegroundColor Green
+    Write-Host "  -> Set Max CPU State = 99% & Min Cores = 100% (Unparked all 12 threads)" -ForegroundColor Green
 } else {
-    Write-Host "  -> Could not duplicate new scheme; applying settings to active scheme..." -ForegroundColor Yellow
+    Write-Host "  -> Could not create/locate custom scheme; applying settings to active scheme..." -ForegroundColor Yellow
     $activeGuid = (powercfg /getactivescheme).Split()[3]
     powercfg -setacvalueindex $activeGuid 501a4d13-42af-4429-9e56-4784f8da68f4 ee12f906-d277-404b-b6da-e5fa1a576df5 0
     powercfg -setacvalueindex $activeGuid 54533251-82be-4824-96c1-47b60b740d00 bc5038f7-23e0-4960-96da-33abaf5935ec 99
+    powercfg -setacvalueindex $activeGuid 54533251-82be-4824-96c1-47b60b740d00 0cc5b647-c1df-4637-891a-dec35c318583 100
     powercfg -setactive $activeGuid
-    Write-Host "  -> Applied PCIe and 99% CPU thermal limit to active plan ($activeGuid)" -ForegroundColor Green
+    Write-Host "  -> Applied PCIe, 99% CPU limit, and core unparking to active plan ($activeGuid)" -ForegroundColor Green
 }
 
 Write-Host "`n========================================================" -ForegroundColor Cyan

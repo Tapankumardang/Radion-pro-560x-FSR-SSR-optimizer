@@ -34,8 +34,8 @@ You have a native, dark-themed Windows desktop application ready to run:
 
 #### Tab 1: 🚀 GPU OPTIMIZER
 * **Live Hardware Telemetry:** Real-time CPU usage meter, RAM load, driver detection, and active power plan.
-* **1-Click Tweak Switches:** AMD ULPS, Windows HAGS, TdrDelay (8s), 99% CPU thermal cap, GameDVR, and Radeon Image Sharpening (RIS/CAS).
-* **Master Controls:** **1-Click Apply All** and **1-Click Restore Factory Defaults**.
+* **1-Click Tweak Switches (10 Controls):** AMD ULPS, Windows HAGS, TdrDelay (8s), 99% CPU thermal cap, GameDVR, Radeon Image Sharpening (RIS/CAS), **Windows MPO disable** (`OverlayTestMode=5`), **CPU Core Unparking** (all 12 threads active), **0.5ms Low-Latency Timer Resolution** (in-memory), and **Pre-Game RAM & Game Priority Boost**.
+* **Master Controls:** **1-Click Apply All** (reuses custom power plan cleanly without duplicates) and **1-Click Restore Factory Defaults**.
 * **🔥 Floating In-Game Mini-HUD:** Always-on-top, draggable, semi-transparent hardware overlay showing live FPS, GPU core clock (1004 MHz vs 300 MHz throttle detection), CPU load, and RAM usage with a click-through `📌 PIN` mode! (Toggle with **`Option + Shift + H`**).
 * **❄️ Fan Turbo Assistant:** Integration with *Macs Fan Control* to eliminate Boot Camp heat soak on the dual-fan, single shared copper heatpipe before launching games.
 * **Live Activity Log:** Real-time console tracking all registry modifications.
@@ -51,6 +51,7 @@ You have a native, dark-themed Windows desktop application ready to run:
 #### Tab 3: ✨ UNIVERSAL FSR & DETAIL UPSCALER
 * **AMD FidelityFX FSR (EASU + RCAS):** Injects spatial upscaling and contrast-adaptive sharpening into ANY windowed game.
 * **✨ SSR & Cinematic Lighting / Depth Toggle:** Switch between Standard FSR and **FSR + SSR Cinematic Depth** (boosts dynamic shadow contrast, specular highlights, and pseudo-SSAO depth).
+* **Gaming Resolution Presets & Smart FPS Cap:** Instant resolution switcher auto-adapted to your active display (`1280×800`/`720p`, `1440×900`/`1600×900`, `1680×1050`, and Native restore) plus **Magpie Smart FPS Cap** (`45 FPS` / `60 FPS` / `Uncapped`) to prevent shared heatpipe & VRM thermal soak during long sessions.
 * **Massive FPS Gain:** Run games at 720p or 900p, press **`ALT + F11`** (or **`WIN + SHIFT + A`**), and game upscales to native fullscreen with 40%–80% higher FPS.
 * **⚡ 5-Second Auto-Upscale Button:** Click the button, switch to your game window, and it automatically triggers scaling without fumbling with keyboard shortcuts!
 * **MacBook Pro Touch Bar Friendly:** Includes hotkey switcher (Alt+F11, Win+Shift+A, F11, Ctrl+Alt+S) and reminders for the `fn` key on Touch Bar.

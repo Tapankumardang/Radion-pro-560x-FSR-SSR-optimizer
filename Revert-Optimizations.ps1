@@ -44,6 +44,12 @@ if (Test-Path $gfxPath) {
     Write-Host "  -> Restored GraphicsDrivers defaults (TdrDelay, HwSchMode)" -ForegroundColor Green
 }
 
+$dwmPath = "HKLM:\SOFTWARE\Microsoft\Windows\Dwm"
+if (Test-Path $dwmPath) {
+    Remove-ItemProperty -Path $dwmPath -Name "OverlayTestMode" -ErrorAction SilentlyContinue
+    Write-Host "  -> Restored Windows MPO (removed OverlayTestMode)" -ForegroundColor Green
+}
+
 # 3. Revert Multimedia SystemProfile
 $sysProfilePath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile"
 if (Test-Path $sysProfilePath) {

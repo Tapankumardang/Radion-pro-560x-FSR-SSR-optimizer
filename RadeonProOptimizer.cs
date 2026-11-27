@@ -94,6 +94,45 @@ namespace RadeonPerformanceCenter
         [DllImport("user32.dll", SetLastError = true)] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
         [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
         [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+        [DllImport("ntdll.dll", SetLastError = true)] public static extern int NtSetTimerResolution(uint DesiredResolution, bool SetResolution, out uint CurrentResolution);
+        [DllImport("psapi.dll", SetLastError = true)] public static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        public struct DEVMODE
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+            public short dmSpecVersion;
+            public short dmDriverVersion;
+            public short dmSize;
+            public short dmDriverExtra;
+            public int dmFields;
+            public int dmPositionX;
+            public int dmPositionY;
+            public int dmDisplayOrientation;
+            public int dmDisplayFixedOutput;
+            public short dmColor;
+            public short dmDuplex;
+            public short dmYResolution;
+            public short dmTTOption;
+            public short dmCollate;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+            public short dmLogPixels;
+            public int dmBitsPerPel;
+            public int dmPelsWidth;
+            public int dmPelsHeight;
+            public int dmDisplayFlags;
+            public int dmDisplayFrequency;
+            public int dmICMMethod;
+            public int dmICMIntent;
+            public int dmMediaType;
+            public int dmDitherType;
+            public int dmReserved1;
+            public int dmReserved2;
+            public int dmPanningWidth;
+            public int dmPanningHeight;
+        }
+        [DllImport("user32.dll", CharSet = CharSet.Ansi)] public static extern bool EnumDisplaySettings(string lpszDeviceName, int iModeNum, ref DEVMODE lpDevMode);
+        [DllImport("user32.dll", CharSet = CharSet.Ansi)] public static extern int ChangeDisplaySettings(ref DEVMODE lpDevMode, int dwFlags);
         [DllImport("gdi32.dll")] public static extern int ChoosePixelFormat(IntPtr hdc, [In] ref PIXELFORMATDESCRIPTOR pfd);
         [DllImport("gdi32.dll")] public static extern bool SetPixelFormat(IntPtr hdc, int format, [In] ref PIXELFORMATDESCRIPTOR pfd);
         [DllImport("gdi32.dll")] public static extern bool SwapBuffers(IntPtr hDC);
@@ -190,7 +229,10 @@ namespace RadeonPerformanceCenter
         private Label lblGpuName, lblGpuDriver, lblPowerPlan, lblCpuUsage, lblRamUsage;
         private ProgressBar prgCpu, prgRam;
         private Label lblUlpsStatus, lblHagsStatus, lblTdrStatus, lblCpuCapStatus, lblGameDvrStatus, lblRisStatus;
+        private Label lblMpoStatus, lblUnparkStatus, lblTimerResStatus, lblRamBoostStatus;
         private Button btnToggleUlps, btnToggleHags, btnToggleTdr, btnToggleCpuCap, btnToggleGameDvr, btnToggleRis;
+        private Button btnToggleMpo, btnToggleUnpark, btnToggleTimerRes, btnRamBoost;
+        private bool isTimerResActive = false;
         private RichTextBox txtLog;
         #endregion
 
@@ -221,7 +263,8 @@ namespace RadeonPerformanceCenter
         private Label lblFsrProcessStatus;
         private Button btnStartFsr, btnStopFsr, btnFsrAutoUpscale, btnToggleCinematicSsr;
         private bool isCinematicSsrActive = true;
-        private ComboBox cmbFsrHotkey;
+        private ComboBox cmbFsrHotkey, cmbFsrFpsCap;
+        private Label lblCurrentRes;
         private Timer fsrCountdownTimer;
         private int fsrCountdownRemaining = 0;
         #endregion
@@ -240,8 +283,8 @@ namespace RadeonPerformanceCenter
         public UnifiedMainForm()
         {
             this.Text = "Radeon Pro 560X — All-In-One GPU Performance Center";
-            this.Size = new Size(1140, 840);
-            this.MinimumSize = new Size(1060, 760);
+            this.Size = new Size(1140, 890);
+            this.MinimumSize = new Size(1060, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.BackColor = cBg;
             this.ForeColor = cTextMain;
@@ -278,6 +321,7 @@ namespace RadeonPerformanceCenter
             };
             this.FormClosing += (s, e) => {
                 try { UnregisterHotKey(this.Handle, HOTKEY_MINIHUD_ID); } catch { }
+                if (isTimerResActive) { uint cur; try { NtSetTimerResolution(5000, false, out cur); } catch { } }
                 if (miniHudForm != null && !miniHudForm.IsDisposed) miniHudForm.Close();
                 CleanupOpenGL();
             };
@@ -401,9 +445,9 @@ namespace RadeonPerformanceCenter
             TableLayoutPanel mainLayout = new TableLayoutPanel();
             mainLayout.Dock = DockStyle.Fill;
             mainLayout.RowCount = 4;
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 90f));  // Metrics
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50f));  // Master Buttons
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 360f)); // Tweak Cards
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88f));  // Metrics
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48f));  // Master Buttons
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 435f)); // Tweak Cards (2x5)
             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));  // Console Log
             root.Controls.Add(mainLayout);
 
@@ -437,16 +481,18 @@ namespace RadeonPerformanceCenter
             pnlMaster.Controls.Add(btnFanTurboHelper);
             mainLayout.Controls.Add(pnlMaster, 0, 1);
 
-            // Row 2: Tweak Cards (2 cols x 3 rows)
+            // Row 2: Tweak Cards (2 cols x 5 rows)
             TableLayoutPanel cards = new TableLayoutPanel();
             cards.Dock = DockStyle.Fill;
             cards.ColumnCount = 2;
-            cards.RowCount = 3;
+            cards.RowCount = 5;
             cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
             cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 33.3f));
-            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 33.3f));
-            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 33.4f));
+            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
+            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
+            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
+            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
+            cards.RowStyles.Add(new RowStyle(SizeType.Percent, 20f));
 
             cards.Controls.Add(CreateTweakCard("AMD ULPS (Ultra Low Power State)",
                 "Eliminates deep sleep state cycling that causes sudden FPS hitching and stutter.",
@@ -471,6 +517,22 @@ namespace RadeonPerformanceCenter
             cards.Controls.Add(CreateTweakCard("Radeon Image Sharpening (RIS / CAS)",
                 "Driver-level Contrast Adaptive Sharpening to eliminate texture blur without FPS cost.",
                 out lblRisStatus, out btnToggleRis, (s, e) => ToggleRis()), 1, 2);
+
+            cards.Controls.Add(CreateTweakCard("Windows MPO (Overlay Stutter Fix)",
+                "Disables DWM Multi-Plane Overlay to stop borderless & FSR flicker/micro-stutter.",
+                out lblMpoStatus, out btnToggleMpo, (s, e) => ToggleMpo()), 0, 3);
+
+            cards.Controls.Add(CreateTweakCard("CPU Core Unparking (12 Threads)",
+                "Keeps all 6 cores / 12 threads awake on AC power to smooth out 1% Low FPS dips.",
+                out lblUnparkStatus, out btnToggleUnpark, (s, e) => ToggleCoreUnpark()), 1, 3);
+
+            cards.Controls.Add(CreateTweakCard("0.5ms Low-Latency Timer (In-Memory)",
+                "Locks Windows timer tick to 0.5ms while running (zero registry changes, auto-resets on exit).",
+                out lblTimerResStatus, out btnToggleTimerRes, (s, e) => ToggleTimerResolution()), 0, 4);
+
+            cards.Controls.Add(CreateTweakCard("Pre-Game RAM & Game Priority Boost",
+                "Safely trims idle standby RAM (helps 4GB VRAM) and sets running games to High priority.",
+                out lblRamBoostStatus, out btnRamBoost, (s, e) => BoostMemoryAndGames()), 1, 4);
 
             mainLayout.Controls.Add(cards, 0, 2);
 
@@ -546,18 +608,19 @@ namespace RadeonPerformanceCenter
         private Panel CreateTweakCard(string title, string desc, out Label lblStatus, out Button btnToggle, EventHandler onClick)
         {
             Panel p = new Panel();
+            p.Size = new Size(420, 82);
             p.Dock = DockStyle.Fill;
             p.BackColor = cCardBg;
-            p.Padding = new Padding(14);
-            p.Margin = new Padding(6);
+            p.Padding = new Padding(10);
+            p.Margin = new Padding(4);
 
-            Label lblTitle = new Label { Text = title, Font = new Font("Segoe UI", 10f, FontStyle.Bold), ForeColor = cTextMain, Location = new Point(14, 10), AutoSize = true };
-            Label lblDesc = new Label { Text = desc, Font = new Font("Segoe UI", 8.5f), ForeColor = cTextMuted, Location = new Point(14, 32), Size = new Size(340, 32) };
+            Label lblTitle = new Label { Text = title, Font = new Font("Segoe UI", 9.5f, FontStyle.Bold), ForeColor = cTextMain, Location = new Point(12, 6), AutoSize = true };
+            Label lblDesc = new Label { Text = desc, Font = new Font("Segoe UI", 8f), ForeColor = cTextMuted, Location = new Point(12, 24), Size = new Size(280, 28) };
 
-            lblStatus = new Label { Text = "Detecting...", Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = cYellow, Location = new Point(14, 70), AutoSize = true };
+            lblStatus = new Label { Text = "Detecting...", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = cYellow, Location = new Point(12, 54), AutoSize = true };
 
-            btnToggle = CreateModernButton("Toggle", Color.FromArgb(40, 45, 60), cTextMain, 130, 32);
-            btnToggle.Location = new Point(370, 64);
+            btnToggle = CreateModernButton("Toggle", Color.FromArgb(40, 45, 60), cTextMain, 122, 28);
+            btnToggle.Location = new Point(286, 46);
             btnToggle.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnToggle.Click += onClick;
 
@@ -795,6 +858,63 @@ namespace RadeonPerformanceCenter
             };
             flow.Controls.Add(pnlStatus);
 
+            // 1b. 16:10 Resolution Switcher & Magpie Smart FPS Cap Panel
+            Panel pnlDisplayTune = new Panel();
+            pnlDisplayTune.Size = new Size(820, 122);
+            pnlDisplayTune.BackColor = cCardBg;
+            pnlDisplayTune.Padding = new Padding(16);
+            pnlDisplayTune.Margin = new Padding(0, 0, 0, 14);
+
+            Label lblDispTitle = new Label { Text = "GAMING RESOLUTION PRESETS & SMART FPS CAP (THERMAL SOAK GUARD)", Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = cCyan, Location = new Point(16, 12), AutoSize = true };
+            lblCurrentRes = new Label { Text = GetCurrentDisplayResolutionText(), Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = cGreen, Location = new Point(16, 34), AutoSize = true };
+
+            Size resMaxFps = PickSupportedResolution(new int[,] { { 1280, 800 }, { 1280, 720 } });
+            Size resBalanced = PickSupportedResolution(new int[,] { { 1440, 900 }, { 1600, 900 } });
+            Size resCrisp = PickSupportedResolution(new int[,] { { 1680, 1050 }, { 1600, 900 } });
+            Size resNative = GetMaxSupportedResolution();
+
+            Button btnRes800p = CreateModernButton(string.Format("{0}x{1} (Max FPS)", resMaxFps.Width, resMaxFps.Height), Color.FromArgb(38, 45, 62), Color.White, 138, 34);
+            btnRes800p.Location = new Point(16, 66);
+            btnRes800p.Click += (s, e) => SetDisplayResolution16x10(resMaxFps.Width, resMaxFps.Height);
+
+            Button btnRes900p = CreateModernButton(string.Format("{0}x{1} (Balanced)", resBalanced.Width, resBalanced.Height), Color.FromArgb(38, 45, 62), Color.White, 140, 34);
+            btnRes900p.Location = new Point(160, 66);
+            btnRes900p.Click += (s, e) => SetDisplayResolution16x10(resBalanced.Width, resBalanced.Height);
+
+            Button btnRes1050p = CreateModernButton(string.Format("{0}x{1} (Crisp)", resCrisp.Width, resCrisp.Height), Color.FromArgb(38, 45, 62), Color.White, 134, 34);
+            btnRes1050p.Location = new Point(306, 66);
+            btnRes1050p.Click += (s, e) => SetDisplayResolution16x10(resCrisp.Width, resCrisp.Height);
+
+            Button btnResNative = CreateModernButton(string.Format("{0}x{1} (Native)", resNative.Width, resNative.Height), Color.FromArgb(60, 65, 82), cTextMain, 136, 34);
+            btnResNative.Location = new Point(446, 66);
+            btnResNative.Click += (s, e) => SetDisplayResolution16x10(resNative.Width, resNative.Height);
+
+            Label lblFpsCap = new Label { Text = "MAGPIE SMART FPS CAP:", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = cTextMuted, Location = new Point(594, 36), AutoSize = true };
+            cmbFsrFpsCap = new ComboBox();
+            cmbFsrFpsCap.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbFsrFpsCap.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            cmbFsrFpsCap.BackColor = Color.FromArgb(30, 32, 42);
+            cmbFsrFpsCap.ForeColor = Color.White;
+            cmbFsrFpsCap.Location = new Point(594, 68);
+            cmbFsrFpsCap.Size = new Size(206, 28);
+            cmbFsrFpsCap.Items.Add("Uncapped (Max FPS)");
+            cmbFsrFpsCap.Items.Add("60 FPS Cap (Smooth & Cool)");
+            cmbFsrFpsCap.Items.Add("45 FPS Cap (Best Thermals)");
+
+            int fpsCapIdx = GetCurrentMagpieFpsCapIndex();
+            cmbFsrFpsCap.SelectedIndex = fpsCapIdx;
+            cmbFsrFpsCap.SelectedIndexChanged += (s, e) => {
+                if (cmbFsrFpsCap.SelectedIndex == 1) SetMagpieFpsCap(true, 60);
+                else if (cmbFsrFpsCap.SelectedIndex == 2) SetMagpieFpsCap(true, 45);
+                else SetMagpieFpsCap(false, 60);
+            };
+
+            pnlDisplayTune.Controls.AddRange(new Control[] { lblDispTitle, lblCurrentRes, btnRes800p, btnRes900p, btnRes1050p, btnResNative, lblFpsCap, cmbFsrFpsCap });
+            pnlDisplayTune.Paint += (s, e) => {
+                using (Pen p = new Pen(cBorder, 1)) e.Graphics.DrawRectangle(p, 0, 0, pnlDisplayTune.Width - 1, pnlDisplayTune.Height - 1);
+            };
+            flow.Controls.Add(pnlDisplayTune);
+
             // 2. MacBook Pro Touch Bar Important Notice Panel
             Panel pnlMacBook = new Panel();
             pnlMacBook.Size = new Size(820, 110);
@@ -934,7 +1054,36 @@ namespace RadeonPerformanceCenter
             return 7;
         }
 
+        private void UpdateMagpieConfig(Func<string, string> transformJson)
+        {
+            string cfgPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Magpie\config\v5\config.json");
+            if (!File.Exists(cfgPath)) return;
+
+            string json = File.ReadAllText(cfgPath);
+            json = transformJson(json);
+            File.WriteAllText(cfgPath, json, new System.Text.UTF8Encoding(false));
+
+            if (Process.GetProcessesByName("Magpie").Length > 0)
+            {
+                StopFsrEngine();
+                System.Threading.Thread.Sleep(400);
+                StartFsrEngine();
+            }
+        }
+
         private void SetMagpieScalingMode(int mode)
+        {
+            try
+            {
+                UpdateMagpieConfig(json => Regex.Replace(json, @"""scalingMode""\s*:\s*\d+", "\"scalingMode\": " + mode));
+            }
+            catch (Exception ex)
+            {
+                Log("Failed to update Magpie scaling mode: " + ex.Message);
+            }
+        }
+
+        private int GetCurrentMagpieFpsCapIndex()
         {
             try
             {
@@ -942,20 +1091,154 @@ namespace RadeonPerformanceCenter
                 if (File.Exists(cfgPath))
                 {
                     string json = File.ReadAllText(cfgPath);
-                    json = Regex.Replace(json, @"""scalingMode""\s*:\s*\d+", "\"scalingMode\": " + mode);
-                    File.WriteAllText(cfgPath, json, new System.Text.UTF8Encoding(false));
-
-                    if (Process.GetProcessesByName("Magpie").Length > 0)
+                    Match mEn = Regex.Match(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)");
+                    Match mMax = Regex.Match(json, @"""maxFrameRate""\s*:\s*(\d+)");
+                    if (mEn.Success && mEn.Groups[1].Value == "true")
                     {
-                        StopFsrEngine();
-                        System.Threading.Thread.Sleep(400);
-                        StartFsrEngine();
+                        int fps = 60;
+                        if (mMax.Success) int.TryParse(mMax.Groups[1].Value, out fps);
+                        return (fps <= 48) ? 2 : 1;
                     }
+                }
+            }
+            catch { }
+            return 0;
+        }
+
+        private void SetMagpieFpsCap(bool enabled, int maxFps)
+        {
+            try
+            {
+                UpdateMagpieConfig(json => {
+                    json = Regex.Replace(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)", "\"frameRateLimiterEnabled\": " + (enabled ? "true" : "false"));
+                    json = Regex.Replace(json, @"""maxFrameRate""\s*:\s*\d+(?:\.\d+)?", "\"maxFrameRate\": " + maxFps + ".0");
+                    return json;
+                });
+                Log(enabled ? string.Format("Magpie Smart FPS Cap set to {0} FPS (prevents thermal soak).", maxFps) : "Magpie FPS Cap set to Uncapped.");
+            }
+            catch (Exception ex)
+            {
+                Log("Failed to update Magpie FPS Cap: " + ex.Message);
+            }
+        }
+
+        private bool IsResolutionSupported(int width, int height)
+        {
+            DEVMODE dm = new DEVMODE();
+            dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+            int i = 0;
+            while (EnumDisplaySettings(null, i++, ref dm))
+            {
+                if (dm.dmBitsPerPel == 32 && dm.dmPelsWidth == width && dm.dmPelsHeight == height) return true;
+            }
+            return false;
+        }
+
+        private Size PickSupportedResolution(int[,] candidates)
+        {
+            for (int r = 0; r < candidates.GetLength(0); r++)
+            {
+                int w = candidates[r, 0];
+                int h = candidates[r, 1];
+                if (IsResolutionSupported(w, h)) return new Size(w, h);
+            }
+            return new Size(candidates[0, 0], candidates[0, 1]);
+        }
+
+        private Size GetMaxSupportedResolution()
+        {
+            DEVMODE dm = new DEVMODE();
+            dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+            int i = 0;
+            int bestW = 1920, bestH = 1080;
+            long bestPixels = 0;
+            while (EnumDisplaySettings(null, i++, ref dm))
+            {
+                if (dm.dmBitsPerPel == 32)
+                {
+                    long pixels = (long)dm.dmPelsWidth * dm.dmPelsHeight;
+                    if (pixels > bestPixels)
+                    {
+                        bestPixels = pixels;
+                        bestW = dm.dmPelsWidth;
+                        bestH = dm.dmPelsHeight;
+                    }
+                }
+            }
+            return new Size(bestW, bestH);
+        }
+
+        private string GetCurrentDisplayResolutionText()
+        {
+            try
+            {
+                DEVMODE dm = new DEVMODE();
+                dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                if (EnumDisplaySettings(null, -1, ref dm))
+                {
+                    return string.Format("Current Display: {0}x{1} @ {2} Hz", dm.dmPelsWidth, dm.dmPelsHeight, dm.dmDisplayFrequency);
+                }
+            }
+            catch { }
+            return "Current Display: Unknown";
+        }
+
+        private void SetDisplayResolution16x10(int targetWidth, int targetHeight)
+        {
+            try
+            {
+                DEVMODE cur = new DEVMODE();
+                cur.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                EnumDisplaySettings(null, -1, ref cur);
+
+                DEVMODE dm = new DEVMODE();
+                dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                DEVMODE best = new DEVMODE();
+                bool found = false;
+                int modeIdx = 0;
+
+                while (EnumDisplaySettings(null, modeIdx++, ref dm))
+                {
+                    if (dm.dmPelsWidth == targetWidth && dm.dmPelsHeight == targetHeight && dm.dmBitsPerPel == 32)
+                    {
+                        if (!found || dm.dmDisplayFrequency == cur.dmDisplayFrequency || dm.dmDisplayFrequency > best.dmDisplayFrequency)
+                        {
+                            best = dm;
+                            found = true;
+                            if (dm.dmDisplayFrequency == cur.dmDisplayFrequency) break;
+                        }
+                    }
+                }
+
+                if (!found)
+                {
+                    MessageBox.Show(string.Format("Display mode {0}x{1} is not reported by your current graphics driver.", targetWidth, targetHeight),
+                        "Unsupported Resolution", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                const int CDS_TEST = 0x00000002;
+                const int DISP_CHANGE_SUCCESSFUL = 0;
+                if (ChangeDisplaySettings(ref best, CDS_TEST) != DISP_CHANGE_SUCCESSFUL)
+                {
+                    MessageBox.Show("Windows driver validation rejected this display mode.", "Resolution Test Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                int res = ChangeDisplaySettings(ref best, 0);
+                if (res == DISP_CHANGE_SUCCESSFUL)
+                {
+                    if (lblCurrentRes != null) lblCurrentRes.Text = GetCurrentDisplayResolutionText();
+                    Log(string.Format("Switched 16:10 display resolution to {0}x{1} @ {2} Hz.", best.dmPelsWidth, best.dmPelsHeight, best.dmDisplayFrequency));
+                }
+                else
+                {
+                    Log("ChangeDisplaySettings returned error code: " + res);
                 }
             }
             catch (Exception ex)
             {
-                Log("Failed to update Magpie scaling mode: " + ex.Message);
+                Log("Resolution switch error: " + ex.Message);
             }
         }
 
@@ -1045,21 +1328,8 @@ namespace RadeonPerformanceCenter
         {
             try
             {
-                string cfgPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Magpie\config\v5\config.json");
-                if (File.Exists(cfgPath))
-                {
-                    string json = File.ReadAllText(cfgPath);
-                    json = Regex.Replace(json, @"""scale""\s*:\s*\d+", "\"scale\": " + code);
-                    File.WriteAllText(cfgPath, json, new System.Text.UTF8Encoding(false));
-
-                    if (Process.GetProcessesByName("Magpie").Length > 0)
-                    {
-                        StopFsrEngine();
-                        System.Threading.Thread.Sleep(400);
-                        StartFsrEngine();
-                    }
-                    Log("Updated FSR Hotkey to code: " + code);
-                }
+                UpdateMagpieConfig(json => Regex.Replace(json, @"""scale""\s*:\s*\d+", "\"scale\": " + code));
+                Log("Updated FSR Hotkey to code: " + code);
             }
             catch (Exception ex)
             {
@@ -1406,6 +1676,31 @@ namespace RadeonPerformanceCenter
             lblRisStatus.Text = (ris == 1) ? "● ENABLED (Contrast Adaptive Sharpening Active)" : "○ DISABLED";
             lblRisStatus.ForeColor = (ris == 1) ? cGreen : cYellow;
             btnToggleRis.Text = (ris == 1) ? "Disable RIS" : "Enable RIS";
+
+            // 7. Windows MPO
+            int mpo = GetMpoState();
+            lblMpoStatus.Text = (mpo == 5) ? "● DISABLED (Optimal - Smooth FSR & Borderless)" : "○ ENABLED (Default - Flicker/Stutter Risk)";
+            lblMpoStatus.ForeColor = (mpo == 5) ? cGreen : cYellow;
+            btnToggleMpo.Text = (mpo == 5) ? "Enable MPO" : "Disable MPO";
+
+            // 8. CPU Core Unparking
+            int minCores = GetCoreMinPercentState();
+            lblUnparkStatus.Text = (minCores >= 100) ? "● UNPARKED (100% Cores Ready - Smooth 1% Lows)" : string.Format("○ PARKED ({0}% Min Cores - Wakeup Stutter Risk)", minCores);
+            lblUnparkStatus.ForeColor = (minCores >= 100) ? cGreen : cYellow;
+            btnToggleUnpark.Text = (minCores >= 100) ? "Allow Parking" : "Unpark All";
+
+            // 9. 0.5ms Timer Resolution
+            lblTimerResStatus.Text = isTimerResActive ? "● ACTIVE (0.5ms Low-Latency Precision Tick)" : "○ DEFAULT (15.6ms Windows Tick)";
+            lblTimerResStatus.ForeColor = isTimerResActive ? cGreen : cYellow;
+            btnToggleTimerRes.Text = isTimerResActive ? "Reset 15.6ms" : "Enable 0.5ms";
+
+            // 10. Pre-Game RAM & Priority Boost
+            if (lblRamBoostStatus != null && lblRamBoostStatus.Text == "Detecting...")
+            {
+                lblRamBoostStatus.Text = "○ READY (Trim Standby RAM & Boost Active Game)";
+                lblRamBoostStatus.ForeColor = cCyan;
+            }
+            btnRamBoost.Text = "⚡ Boost Now";
         }
 
         private int GetUlpsState()
@@ -1444,19 +1739,59 @@ namespace RadeonPerformanceCenter
             return 2;
         }
 
-        private int GetCpuCapState()
+        private int GetPowerCfgAcValue(string subGroupGuid, string settingGuid, int fallback)
         {
             try
             {
                 string activeGuid = GetActivePowerSchemeGuid();
                 if (!string.IsNullOrEmpty(activeGuid))
                 {
-                    string outStr = RunPowerCfg(string.Format("/q {0} 54533251-82be-4824-96c1-47b60b740d00 bc5038f7-23e0-4960-96da-33abaf5935ec", activeGuid));
+                    string outStr = RunPowerCfg(string.Format("/qh {0} {1} {2}", activeGuid, subGroupGuid, settingGuid));
                     Match m = Regex.Match(outStr, @"Current AC Power Setting Index:\s*0x([0-9a-fA-F]+)");
                     if (m.Success) return Convert.ToInt32(m.Groups[1].Value, 16);
                 }
             } catch { }
-            return 100;
+            return fallback;
+        }
+
+        private int GetCpuCapState()
+        {
+            return GetPowerCfgAcValue("54533251-82be-4824-96c1-47b60b740d00", "bc5038f7-23e0-4960-96da-33abaf5935ec", 100);
+        }
+
+        private int GetCoreMinPercentState()
+        {
+            return GetPowerCfgAcValue("54533251-82be-4824-96c1-47b60b740d00", "0cc5b647-c1df-4637-891a-dec35c318583", 5);
+        }
+
+        private int GetMpoState()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\Dwm"))
+                {
+                    if (k != null) { object v = k.GetValue("OverlayTestMode"); if (v != null) return Convert.ToInt32(v); }
+                }
+            } catch { }
+            return 0;
+        }
+
+        private List<string> FindOptimizedPowerPlanGuids()
+        {
+            List<string> guids = new List<string>();
+            try
+            {
+                string listOut = RunPowerCfg("-list");
+                foreach (string line in listOut.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (line.IndexOf("Radeon Pro 560X - Optimized", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Match m = Regex.Match(line, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+                        if (m.Success) guids.Add(m.Value);
+                    }
+                }
+            } catch { }
+            return guids;
         }
 
         private int GetGameDvrState()
@@ -1629,6 +1964,133 @@ namespace RadeonPerformanceCenter
             RefreshAllOptimizerStates();
         }
 
+        private void ToggleMpo()
+        {
+            int cur = GetMpoState();
+            bool disableMpo = (cur != 5);
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\Dwm"))
+                {
+                    if (k != null)
+                    {
+                        if (disableMpo) k.SetValue("OverlayTestMode", 5, RegistryValueKind.DWord);
+                        else k.DeleteValue("OverlayTestMode", false);
+                    }
+                }
+                Log(disableMpo ? "Windows MPO disabled (OverlayTestMode=5). Restart recommended." : "Windows MPO restored to default.");
+            }
+            catch (Exception ex) { Log("Error setting MPO: " + ex.Message); }
+            RefreshAllOptimizerStates();
+        }
+
+        private void ToggleCoreUnpark()
+        {
+            int cur = GetCoreMinPercentState();
+            int next = (cur >= 100) ? 5 : 100;
+            try
+            {
+                string guid = GetActivePowerSchemeGuid();
+                if (!string.IsNullOrEmpty(guid))
+                {
+                    RunPowerCfg(string.Format("-setacvalueindex {0} 54533251-82be-4824-96c1-47b60b740d00 0cc5b647-c1df-4637-891a-dec35c318583 {1}", guid, next));
+                    RunPowerCfg(string.Format("-setactive {0}", guid));
+                    Log(string.Format("CPU Core Parking Min Cores set to {0}% ({1}).", next, next == 100 ? "All 12 threads unparked" : "Default parking"));
+                }
+            }
+            catch (Exception ex) { Log("Error setting Core Unparking: " + ex.Message); }
+            RefreshAllOptimizerStates();
+        }
+
+        private void ToggleTimerResolution()
+        {
+            try
+            {
+                uint cur;
+                if (!isTimerResActive)
+                {
+                    int status = NtSetTimerResolution(5000, true, out cur);
+                    if (status == 0)
+                    {
+                        isTimerResActive = true;
+                        Log(string.Format("⚡ Enabled 0.5ms Low-Latency Timer Resolution (active tick: {0:F2}ms).", cur / 10000.0));
+                    }
+                    else
+                    {
+                        Log("NtSetTimerResolution returned status: " + status);
+                    }
+                }
+                else
+                {
+                    NtSetTimerResolution(5000, false, out cur);
+                    isTimerResActive = false;
+                    Log("Restored default Windows timer resolution (auto-reset).");
+                }
+            }
+            catch (Exception ex) { Log("Timer resolution error: " + ex.Message); }
+            RefreshAllOptimizerStates();
+        }
+
+        private void BoostMemoryAndGames()
+        {
+            int trimmedCount = 0;
+            List<string> boostedGames = new List<string>();
+            HashSet<string> skipProcs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "Idle", "System", "Registry", "smss", "csrss", "wininit", "services", "lsass",
+                "svchost", "dwm", "explorer", "RadeonOptimizer", "Magpie", "Memory Compression"
+            };
+            HashSet<string> knownGames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "GTA5", "PlayGTAV", "Cyberpunk2077", "witcher3", "RDR2", "eldenring",
+                "rpcs3", "pcsx2", "dolphin", "yuzu", "cs2", "javaw", "FortniteClient-Win64-Shipping"
+            };
+            HashSet<string> nonGameApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "chrome", "msedge", "firefox", "brave", "code", "devenv", "steamwebhelper", "Discord", "obs64"
+            };
+
+            MEMORYSTATUSEX beforeMem = new MEMORYSTATUSEX();
+            GlobalMemoryStatusEx(beforeMem);
+
+            foreach (Process p in Process.GetProcesses())
+            {
+                try
+                {
+                    if (p.SessionId == 0 || skipProcs.Contains(p.ProcessName)) continue;
+
+                    bool isKnownGame = knownGames.Contains(p.ProcessName);
+                    bool isHeavyWindowedApp = !nonGameApps.Contains(p.ProcessName)
+                        && p.MainWindowHandle != IntPtr.Zero
+                        && p.WorkingSet64 > 450L * 1024L * 1024L;
+
+                    if (isKnownGame || isHeavyWindowedApp)
+                    {
+                        if (p.PriorityClass != ProcessPriorityClass.High)
+                        {
+                            p.PriorityClass = ProcessPriorityClass.High;
+                        }
+                        boostedGames.Add(p.ProcessName);
+                    }
+                    else
+                    {
+                        if (EmptyWorkingSet(p.Handle)) trimmedCount++;
+                    }
+                }
+                catch { }
+                finally { try { p.Dispose(); } catch { } }
+            }
+
+            MEMORYSTATUSEX afterMem = new MEMORYSTATUSEX();
+            GlobalMemoryStatusEx(afterMem);
+            double freedMb = Math.Max(0, (double)((long)afterMem.ullAvailPhys - (long)beforeMem.ullAvailPhys) / (1024.0 * 1024.0));
+
+            string gameText = boostedGames.Count > 0 ? string.Join(", ", boostedGames.ToArray()) : "None detected";
+            lblRamBoostStatus.Text = string.Format("● BOOSTED ({0} apps trimmed, +{1:F0} MB free)", trimmedCount, freedMb);
+            lblRamBoostStatus.ForeColor = cGreen;
+
+            Log(string.Format("🚀 Pre-Game Boost complete: Trimmed {0} background apps (+{1:F0} MB RAM freed). High-Priority Games: {2}",
+                trimmedCount, freedMb, gameText));
+            UpdateHardwareMetrics();
+        }
+
         private void ApplyAllOptimizations()
         {
             Log("=================================================");
@@ -1724,23 +2186,39 @@ namespace RadeonPerformanceCenter
 
             try
             {
-                string dupOut = RunPowerCfg("-duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61");
-                Match m = Regex.Match(dupOut, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-                string planGuid = m.Success ? m.Value : GetActivePowerSchemeGuid();
+                List<string> existingPlans = FindOptimizedPowerPlanGuids();
+                string planGuid = (existingPlans.Count > 0) ? existingPlans[0] : null;
 
-                RunPowerCfg(string.Format("-changename {0} \"Radeon Pro 560X - Optimized\" \"Sustained GPU Boost Clock with 99% CPU thermal limit\"", planGuid));
+                if (string.IsNullOrEmpty(planGuid))
+                {
+                    string dupOut = RunPowerCfg("-duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61");
+                    Match m = Regex.Match(dupOut, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+                    planGuid = m.Success ? m.Value : GetActivePowerSchemeGuid();
+                    RunPowerCfg(string.Format("-changename {0} \"Radeon Pro 560X - Optimized\" \"Sustained GPU Boost Clock with 99% CPU thermal limit\"", planGuid));
+                }
+
                 RunPowerCfg(string.Format("-setactive {0}", planGuid));
                 RunPowerCfg(string.Format("-setacvalueindex {0} 501a4d13-42af-4429-9e56-4784f8da68f4 ee12f906-d277-404b-b6da-e5fa1a576df5 0", planGuid));
                 RunPowerCfg(string.Format("-setacvalueindex {0} 54533251-82be-4824-96c1-47b60b740d00 bc5038f7-23e0-4960-96da-33abaf5935ec 99", planGuid));
+                RunPowerCfg(string.Format("-setacvalueindex {0} 54533251-82be-4824-96c1-47b60b740d00 0cc5b647-c1df-4637-891a-dec35c318583 100", planGuid));
                 RunPowerCfg(string.Format("-setactive {0}", planGuid));
-                Log("6/6: Activated 'Radeon Pro 560X - Optimized' Power Plan (99% CPU thermal cap).");
-            } catch (Exception ex) { Log("6/6 PowerCfg Error: " + ex.Message); }
+                Log("6/7: Activated 'Radeon Pro 560X - Optimized' Power Plan (99% CPU cap + 100% Core Unpark).");
+            } catch (Exception ex) { Log("6/7 PowerCfg Error: " + ex.Message); }
 
-            Log("✅ ALL 6 OPTIMIZATIONS SUCCESSFULLY APPLIED.");
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows\Dwm"))
+                {
+                    if (k != null) k.SetValue("OverlayTestMode", 5, RegistryValueKind.DWord);
+                }
+                Log("7/7: Windows MPO disabled (OverlayTestMode=5 - stops borderless/FSR flicker).");
+            } catch (Exception ex) { Log("7/7 MPO Error: " + ex.Message); }
+
+            Log("✅ ALL 7 OPTIMIZATIONS SUCCESSFULLY APPLIED.");
             Log("=================================================");
             RefreshAllOptimizerStates();
 
-            MessageBox.Show("All optimizations applied successfully!\n\nFor the display driver changes (ULPS & HAGS) to take full hardware effect, a quick system restart is recommended.",
+            MessageBox.Show("All optimizations applied successfully!\n\nFor the display driver changes (ULPS, HAGS & MPO) to take full hardware effect, a quick system restart is recommended.",
                 "Radeon Performance Center", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
@@ -1845,11 +2323,40 @@ namespace RadeonPerformanceCenter
                 Log("Restore error (GameDVR): " + ex.Message);
             }
 
-            // 5. Restore Balanced Power Plan
+            // 5. Revert Windows MPO & In-Memory Timer
             try
             {
-                RunPowerCfg("-setactive 381b4222-f694-41f0-9685-ff5bb260df2e"); // Balanced
-                Log("5/5: Activated standard Windows Balanced power plan.");
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\Dwm", true))
+                {
+                    if (k != null) { try { k.DeleteValue("OverlayTestMode", false); } catch { } }
+                }
+                if (isTimerResActive)
+                {
+                    uint cur;
+                    NtSetTimerResolution(5000, false, out cur);
+                    isTimerResActive = false;
+                }
+                Log("5/6: Reverted Windows MPO and timer resolution.");
+            }
+            catch (Exception ex)
+            {
+                hasError = true;
+                Log("Restore error (MPO): " + ex.Message);
+            }
+
+            // 6. Restore Balanced Power Plan & Clean Custom Schemes
+            try
+            {
+                const string balancedGuid = "381b4222-f694-41f0-9685-ff5bb260df2e";
+                RunPowerCfg("-setactive " + balancedGuid);
+                foreach (string customGuid in FindOptimizedPowerPlanGuids())
+                {
+                    if (!string.Equals(customGuid, balancedGuid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        RunPowerCfg("-delete " + customGuid);
+                    }
+                }
+                Log("6/6: Activated standard Windows Balanced power plan and cleaned custom plans.");
             }
             catch (Exception ex)
             {
