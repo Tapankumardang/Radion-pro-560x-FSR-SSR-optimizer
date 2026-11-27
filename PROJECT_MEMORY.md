@@ -2,7 +2,7 @@
 
 > **Project:** Radeon Pro 560X & Core i9-8950HK Performance Center  
 > **Repository Root:** `e:\apps\Graphic card improve`  
-> **Last Updated:** 2026-11-24  
+> **Last Updated:** 2026-11-27  
 > **Role:** Persistent memory ledger for AI assistants (Antigravity/Gemini) to maintain context across sessions, avoid repeating past mistakes, and record historical decisions.
 
 ---
@@ -139,6 +139,11 @@
     - *Problem:* In `Publish-To-GitHub.bat`, parenthesized `if "%choice%"=="2" (...)` blocks evaluate variables like `%repourl%` at parse time instead of runtime, causing `git remote add origin` to be called with an empty string.
     - *Fix:* Always declare `setlocal EnableDelayedExpansion` at the head of Windows batch scripts and expand runtime variables with `!repourl!`. Add verification checking if `origin` already exists (`git remote get-url origin`) to skip prompts if already configured.
 
+13. **Corrupted Binary Headers ("Unsupported 16-Bit Application" Dialog):**
+    - *Problem:* Launching `FSR-Engine\Magpie.exe` triggered Windows error: `"The program or feature '\??\E:\apps\Graphic card improve\FSR-Engine\Magpie.exe' cannot start or run due to incompatibility with 64-bit versions of Windows."`
+    - *Root Cause:* When an executable file's PE header is damaged or corrupted on disk (e.g. initial bytes corrupted to `7E E4 30 DF` instead of `4D 5A 78 00`), the 64-bit Windows PE loader cannot recognize it as a valid Portable Executable and falls back to checking for legacy 16-bit DOS applications, displaying this misleading error dialog.
+    - *Remedy:* Verify binary PE header via byte inspection to ensure `0x4D 0x5A` ('MZ') and machine architecture `0x8664` (`IMAGE_FILE_MACHINE_AMD64`). Download official clean 64-bit release (`Magpie-v0.13.0-x64.zip`) using `curl.exe` and unpack with `tar.exe -xf`. Verified live execution in 64-bit environment.
+
 
 ---
 
@@ -188,6 +193,7 @@ Every modification made in this workspace is recorded here chronologically:
 | **2026-11-24** | **GitHub Publish Complete & Synced** | Fetched remote `origin/main` containing remote MIT LICENSE, rebased local branch cleanly (`git rebase origin/main -X theirs`) preserving comprehensive documentation and source tree, and pushed `main` to `origin`. Repository is fully live at `https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer`. | `https://github.com/Tapankumardang/Radion-pro-560x-FSR-SSR-optimizer`, `PROJECT_MEMORY.md` |
 | **2026-11-24** | **Feature 3 & 4: Fan Turbo & Mini-HUD** | Built and integrated: (1) **Floating In-Game Mini-HUD (`FloatingMiniHud`)**: Always-on-top, draggable, semi-transparent hardware overlay with real-time FPS, GPU clock (1004 MHz sustained vs 300 MHz throttle detection), CPU %, RAM load, click-through Pin lock (`WS_EX_TRANSPARENT`), and global hotkey `Option + Shift + H` (`Alt + Shift + H`); (2) **Thermal Management & Fan Turbo Assistant (`MacsFanControlDialog`)**: 1-click download/launch integration with Macs Fan Control and custom sensor threshold guide (CPU Core Avg: 50°C–78°C / GPU Diode: 48°C–72°C) to prevent single heatpipe heat soak before gaming. Recompiled clean `RadeonOptimizer.exe` (112 KB). | `RadeonProOptimizer.cs`, `RadeonOptimizer.exe`, `README.md`, `PROJECT_MEMORY.md` |
 | **2026-11-24** | **GitHub Documentation & Badges Update** | Enhanced `README.md` with official platform, hardware, GPU, CPU, FSR, and MIT License badges, added in-game hotkey reference card, and updated repository links. Synced and pushed to GitHub. | `README.md`, `PROJECT_MEMORY.md` |
+| **2026-11-27** | **Bug Fix / Binary Integrity** | Diagnosed and resolved `"Unsupported 16-Bit Application"` fatal error on `FSR-Engine\Magpie.exe`. Root cause: on-disk PE header corrupted to `7E E4 30 DF`. Downloaded clean 64-bit release `Magpie-v0.13.0-x64.zip` via curl, extracted with tar.exe, verified AMD64 architecture (`0x8664`), and confirmed live execution (`PID 14100`, 64-bit native mode). Added Pitfall 13 to prevent recurrence. | `FSR-Engine/Magpie.exe`, `PROJECT_MEMORY.md` |
 
 
 
