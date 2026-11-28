@@ -265,7 +265,7 @@ namespace RadeonPerformanceCenter
         private Label lblFsrProcessStatus;
         private Button btnStartFsr, btnStopFsr, btnFsrAutoUpscale, btnToggleCinematicSsr, btnOptimizeGameSsr;
         private bool isCinematicSsrActive = true;
-        private ComboBox cmbFsrHotkey, cmbFsrFpsCap, cmbSsrPreset;
+        private ComboBox cmbFsrHotkey, cmbFsrFpsCap, cmbSsrPreset, cmbGameSsrTarget;
         private Label lblCurrentRes;
         private Timer fsrCountdownTimer;
         private int fsrCountdownRemaining = 0;
@@ -798,7 +798,7 @@ namespace RadeonPerformanceCenter
 
             // 1. Control & Action Panel
             Panel pnlStatus = new Panel();
-            pnlStatus.Size = new Size(820, 204);
+            pnlStatus.Size = new Size(820, 214);
             pnlStatus.BackColor = cCardBg;
             pnlStatus.Padding = new Padding(16);
             pnlStatus.Margin = new Padding(0, 0, 0, 14);
@@ -872,13 +872,27 @@ namespace RadeonPerformanceCenter
             cmbSsrPreset.SelectedIndex = (GetCurrentMagpieScalingMode() == 7) ? 2 : 0;
             cmbSsrPreset.SelectedIndexChanged += (s, e) => ApplySsrShaderPreset(cmbSsrPreset.SelectedIndex);
 
-            btnOptimizeGameSsr = CreateModernButton("🎮 OPTIMIZE GTA V & GAME SSR", Color.FromArgb(20, 120, 140), Color.White, 258, 36);
+            btnOptimizeGameSsr = CreateModernButton("🤖 AUTO-DETECT & TUNE SSR", Color.FromArgb(20, 120, 140), Color.White, 258, 36);
             btnOptimizeGameSsr.Location = new Point(542, 122);
             btnOptimizeGameSsr.Click += (s, e) => OptimizeInstalledGamesSsr();
 
-            Label lblCinematicInfo = new Label { Text = "Universal SSR Shader (Specular Bloom + Shadow Depth + Deband) works on GTA V & all games", Font = new Font("Segoe UI", 8.5f), ForeColor = cTextMuted, Location = new Point(16, 168), AutoSize = true };
+            Label lblTargetRes = new Label { Text = "GAME SSR MODE:", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = cTextMuted, Location = new Point(16, 172), AutoSize = true };
+            cmbGameSsrTarget = new ComboBox();
+            cmbGameSsrTarget.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbGameSsrTarget.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            cmbGameSsrTarget.BackColor = Color.FromArgb(30, 32, 42);
+            cmbGameSsrTarget.ForeColor = Color.White;
+            cmbGameSsrTarget.Location = new Point(132, 168);
+            cmbGameSsrTarget.Size = new Size(300, 26);
+            cmbGameSsrTarget.Items.Add("Auto (Smart Hardware & Thermal Match)");
+            cmbGameSsrTarget.Items.Add("1680x1050 (Crisp 16:10 - Best Quality)");
+            cmbGameSsrTarget.Items.Add("1440x900 (Balanced 16:10 - 50-60 FPS)");
+            cmbGameSsrTarget.Items.Add("1280x800 / 720p (Max FPS - 60+ FPS)");
+            cmbGameSsrTarget.SelectedIndex = 0;
 
-            pnlStatus.Controls.AddRange(new Control[] { lblHead, lblFsrProcessStatus, btnStartFsr, btnStopFsr, btnFsrAutoUpscale, lblHk, cmbFsrHotkey, btnToggleCinematicSsr, cmbSsrPreset, btnOptimizeGameSsr, lblCinematicInfo });
+            Label lblCinematicInfo = new Label { Text = "Auto inspects CPU Cap, RAM & display ratio (works on GTA V + all games)", Font = new Font("Segoe UI", 8.2f), ForeColor = cTextMuted, Location = new Point(442, 173), AutoSize = true };
+
+            pnlStatus.Controls.AddRange(new Control[] { lblHead, lblFsrProcessStatus, btnStartFsr, btnStopFsr, btnFsrAutoUpscale, lblHk, cmbFsrHotkey, btnToggleCinematicSsr, cmbSsrPreset, btnOptimizeGameSsr, lblTargetRes, cmbGameSsrTarget, lblCinematicInfo });
             pnlStatus.Paint += (s, e) => {
                 using (Pen p = new Pen(cBorder, 1)) e.Graphics.DrawRectangle(p, 0, 0, pnlStatus.Width - 1, pnlStatus.Height - 1);
             };
@@ -1305,6 +1319,7 @@ namespace RadeonPerformanceCenter
 
                     UpdateMagpieConfig(json => {
                         json = Regex.Replace(json, @"""scalingMode""\s*:\s*\d+", "\"scalingMode\": 7");
+                        json = Regex.Replace(json, @"""duplicateFrameDetectionMode""\s*:\s*\d+", "\"duplicateFrameDetectionMode\": 0");
                         // Upgrade older ImageAdjustment block if present, or update SSR_Cinematic_Enhancer params
                         json = Regex.Replace(json, @"""name""\s*:\s*""ImageAdjustment""[\s\S]*?""saturation""\s*:\s*[0-9\.]+",
                             "\"name\": \"SSR_Cinematic_Enhancer\",\n                    \"parameters\": {\n                        \"specularBloom\": 0.30,\n                        \"shadowDepth\": 0.20,\n                        \"vibrance\": 0.14,\n                        \"debandStrength\": 0.35");
@@ -1333,9 +1348,99 @@ namespace RadeonPerformanceCenter
 
         private void OptimizeInstalledGamesSsr()
         {
+            // 1. Inspect hardware & thermal state for Auto-Detect
+            bool cpuCapOk = (GetCpuCapState() == 99);
+            MEMORYSTATUSEX mem = new MEMORYSTATUSEX();
+            GlobalMemoryStatusEx(mem);
+            double availRamGb = mem.ullAvailPhys / (1024.0 * 1024.0 * 1024.0);
+            Size maxDisp = GetMaxSupportedResolution();
+            bool has16x10 = IsResolutionSupported(1680, 1050) || IsResolutionSupported(1440, 900) || IsResolutionSupported(1280, 800);
+
+            int modeIdx = (cmbGameSsrTarget != null) ? cmbGameSsrTarget.SelectedIndex : 0;
+            Size targetRes;
+            int targetSsrPreset = 2;
+            bool enableFpsCap = false;
+            string detectReason = "";
+
+            if (modeIdx == 1)
+            {
+                targetRes = PickSupportedResolution(new int[,] { { 1680, 1050 }, { 1600, 900 } });
+                detectReason = "Manual Crisp 16:10 Mode";
+            }
+            else if (modeIdx == 2)
+            {
+                targetRes = PickSupportedResolution(new int[,] { { 1440, 900 }, { 1600, 900 } });
+                detectReason = "Manual Balanced Mode (50-60 FPS target)";
+            }
+            else if (modeIdx == 3)
+            {
+                targetRes = PickSupportedResolution(new int[,] { { 1280, 800 }, { 1280, 720 } });
+                detectReason = "Manual Max FPS Mode (60+ FPS target)";
+            }
+            else
+            {
+                if (cpuCapOk && availRamGb >= 4.0)
+                {
+                    targetRes = PickSupportedResolution(new int[,] { { 1440, 900 }, { 1680, 1050 }, { 1600, 900 } });
+                    targetSsrPreset = 2; // Vivid Wet-Road
+                    enableFpsCap = false;
+                    detectReason = "Auto (99% CPU Cap ON & ample RAM -> balanced crispness + Vivid SSR)";
+                }
+                else
+                {
+                    targetRes = PickSupportedResolution(new int[,] { { 1280, 800 }, { 1280, 720 } });
+                    targetSsrPreset = 1; // Subtle Realism for thermal headroom
+                    enableFpsCap = true;
+                    detectReason = string.Format("Auto ({0} -> Max FPS thermal-safe profile)",
+                        !cpuCapOk ? "99% CPU Cap OFF" : "Low Free RAM");
+                }
+            }
+
+            // 2. Tune Magpie pipeline cleanly for 3D gaming (Pre-EASU SSR + zero duplicate-frame overhead)
+            isUpdatingSsrUi = true;
+            try
+            {
+                double bloom = (targetSsrPreset == 1) ? 0.16 : 0.30;
+                double shadow = (targetSsrPreset == 1) ? 0.12 : 0.20;
+                double vib = (targetSsrPreset == 1) ? 0.08 : 0.14;
+                double deband = (targetSsrPreset == 1) ? 0.30 : 0.35;
+
+                UpdateMagpieConfig(json => {
+                    json = Regex.Replace(json, @"""scalingMode""\s*:\s*\d+", "\"scalingMode\": 7");
+                    json = Regex.Replace(json, @"""duplicateFrameDetectionMode""\s*:\s*\d+", "\"duplicateFrameDetectionMode\": 0");
+                    json = Regex.Replace(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)", "\"frameRateLimiterEnabled\": " + (enableFpsCap ? "true" : "false"));
+                    json = Regex.Replace(json, @"""maxFrameRate""\s*:\s*\d+(?:\.\d+)?", "\"maxFrameRate\": 60.0");
+                    json = Regex.Replace(json, @"""specularBloom""\s*:\s*[0-9\.]+", "\"specularBloom\": " + bloom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    json = Regex.Replace(json, @"""shadowDepth""\s*:\s*[0-9\.]+", "\"shadowDepth\": " + shadow.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    json = Regex.Replace(json, @"""vibrance""\s*:\s*[0-9\.]+", "\"vibrance\": " + vib.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    json = Regex.Replace(json, @"""debandStrength""\s*:\s*[0-9\.]+", "\"debandStrength\": " + deband.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    return json;
+                });
+
+                isCinematicSsrActive = true;
+                if (cmbSsrPreset != null) cmbSsrPreset.SelectedIndex = targetSsrPreset;
+                if (cmbFsrFpsCap != null) cmbFsrFpsCap.SelectedIndex = enableFpsCap ? 1 : 0;
+            }
+            catch (Exception ex) { Log("Magpie Auto-Tune error: " + ex.Message); }
+            finally { isUpdatingSsrUi = false; }
+            UpdateFsrStatus();
+
+            // 3. Configure GTA V safely (only write if GTA5.exe is closed so game doesn't overwrite on exit)
             string gtaPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), @"Rockstar Games\GTA V\settings.xml");
+            bool gtaRunning = (Process.GetProcessesByName("GTA5").Length > 0 || Process.GetProcessesByName("PlayGTAV").Length > 0);
             bool gtaUpdated = false;
-            if (File.Exists(gtaPath))
+            string gtaStatusLine;
+
+            if (!File.Exists(gtaPath))
+            {
+                gtaStatusLine = "ℹ️ GTA V settings.xml not found at Documents\\Rockstar Games\\GTA V.";
+            }
+            else if (gtaRunning)
+            {
+                gtaStatusLine = "⚠️ GTA5.exe is currently RUNNING! Close GTA V first and click again — otherwise GTA V overwrites settings.xml when you exit.";
+                Log("⚠️ Skipped editing GTA V settings.xml while GTA5.exe is running (close game first).");
+            }
+            else
             {
                 try
                 {
@@ -1347,29 +1452,44 @@ namespace RadeonPerformanceCenter
                     xml = Regex.Replace(xml, @"<Reflection_MipBlur\s+value=""(true|false)""\s*/>", "<Reflection_MipBlur value=\"true\" />");
                     xml = Regex.Replace(xml, @"<UltraShadows_Enabled\s+value=""(true|false)""\s*/>", "<UltraShadows_Enabled value=\"false\" />");
                     xml = Regex.Replace(xml, @"<Shadow_ParticleShadows\s+value=""(true|false)""\s*/>", "<Shadow_ParticleShadows value=\"false\" />");
-                    xml = Regex.Replace(xml, @"<ScreenWidth\s+value=""\d+""\s*/>", "<ScreenWidth value=\"1280\" />");
-                    xml = Regex.Replace(xml, @"<ScreenHeight\s+value=""\d+""\s*/>", "<ScreenHeight value=\"720\" />");
+                    xml = Regex.Replace(xml, @"<ScreenWidth\s+value=""\d+""\s*/>", string.Format("<ScreenWidth value=\"{0}\" />", targetRes.Width));
+                    xml = Regex.Replace(xml, @"<ScreenHeight\s+value=""\d+""\s*/>", string.Format("<ScreenHeight value=\"{0}\" />", targetRes.Height));
                     xml = Regex.Replace(xml, @"<Windowed\s+value=""\d+""\s*/>", "<Windowed value=\"2\" />");
                     File.WriteAllText(gtaPath, xml, new System.Text.UTF8Encoding(false));
                     gtaUpdated = true;
-                    Log("🎮 GTA V SSR optimized: 1280x720 Borderless, High SSR (ReflectionMSAA=0), 8x AF, SSAO=1, UltraShadows=false.");
+                    gtaStatusLine = string.Format("✅ GTA V tuned -> {0}x{1} Borderless | ReflectionQuality=2 | ReflectionMSAA=0 | 8x AF | SSAO=1 | UltraShadows=false",
+                        targetRes.Width, targetRes.Height);
+                    Log(string.Format("🤖 Auto-Tuned GTA V & Magpie -> {0}x{1} ({2}).", targetRes.Width, targetRes.Height, detectReason));
                 }
                 catch (Exception ex)
                 {
+                    gtaStatusLine = "❌ GTA V config error: " + ex.Message;
                     Log("GTA V config update error: " + ex.Message);
                 }
             }
 
-            string summary = (gtaUpdated
-                ? "✅ GTA V (settings.xml) tuned for HIGH FPS + Sharp SSR:\n  • Resolution: 1280x720 Borderless (gives FSR clean headroom for 55-60+ FPS)\n  • Reflection Quality: High (2) + ReflectionMSAA OFF (huge FPS save)\n  • Anisotropic Filtering: 8x + SSAO: Normal (1) + UltraShadows OFF\n\n"
-                : "ℹ️ GTA V settings.xml not detected at Documents\\Rockstar Games\\GTA V.\n\n") +
-                "🌍 FOR ALL OTHER GAMES (Cyberpunk, RDR2, Witcher 3, Elden Ring, Emulators):\n" +
-                "  1. Keep Magpie 'SSR ENHANCER: ON' (works automatically on EVERY game window!)\n" +
-                "  2. Set Display Mode = Borderless Windowed\n" +
-                "  3. Set Reflections = High / Screen Space Reflections (NEVER Ray Tracing)\n" +
-                "  4. Set Anisotropic Filtering = 8x or 16x (makes puddle/floor reflections crisp at zero FPS loss)";
+            string summary = string.Format(
+                "🔍 AUTO-DETECTED HARDWARE STATE:\n" +
+                "  • 99% CPU Thermal Cap: {0}\n" +
+                "  • Available System RAM: {1:0.0} GB\n" +
+                "  • Display Max Mode: {2}x{3} ({4})\n" +
+                "  • Selected Target: {5}x{6} [{7}]\n\n" +
+                "⚡ MAGPIE ENGINE OPTIMIZED:\n" +
+                "  • Pipeline: 5-Tap Pre-EASU SSR_Cinematic_Enhancer -> FSR EASU -> RCAS\n" +
+                "  • Duplicate Frame Compare: OFF (0) | FPS Cap: {8}\n\n" +
+                "🎮 GTA V STATUS:\n  {9}\n\n" +
+                "🌍 ALL OTHER GAMES CHECKLIST:\n" +
+                "  • Set game to Borderless Windowed @ {5}x{6}, Reflections=High (no Ray Tracing), AF=8x, Reflection MSAA=Off.",
+                cpuCapOk ? "ACTIVE (Optimal)" : "OFF (Throttle Risk! Enable in Tab 1)",
+                availRamGb,
+                maxDisp.Width, maxDisp.Height,
+                has16x10 ? "16:10 Ready" : "16:9 Screen",
+                targetRes.Width, targetRes.Height, detectReason,
+                enableFpsCap ? "60 FPS Cap" : "Uncapped",
+                gtaStatusLine);
 
-            MessageBox.Show(summary, "GTA V & Universal Game SSR Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (!gtaUpdated && !gtaRunning) Log("🤖 Auto-Tuned Magpie SSR pipeline cleanly.");
+            MessageBox.Show(summary, "Auto-Detect & Game SSR Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void StartFsrEngine()
