@@ -35,7 +35,7 @@ You have a native, dark-themed Windows desktop application ready to run:
 #### Tab 1: 🚀 GPU OPTIMIZER
 * **Live Hardware Telemetry:** Real-time CPU usage meter, RAM load, driver detection, and active power plan.
 * **1-Click Tweak Switches (10 Controls):** AMD ULPS, Windows HAGS, TdrDelay (8s), 99% CPU thermal cap, GameDVR, Radeon Image Sharpening (RIS/CAS), **Windows MPO disable** (`OverlayTestMode=5`), **CPU Core Unparking** (all 12 threads active), **0.5ms Low-Latency Timer Resolution** (in-memory), and **Pre-Game RAM & Game Priority Boost**.
-* **Master Controls:** **1-Click Apply All** (reuses custom power plan cleanly without duplicates) and **1-Click Restore Factory Defaults**.
+* **Master Controls:** **1-Click Apply All** (reuses custom power plan cleanly without duplicates), **1-Click Restore Factory Defaults**, and **🔒 Live 30 FPS Frame-Pacing & Stutter Guard** (quick-toggle synced with Tab 3).
 * **🔥 Floating In-Game Mini-HUD:** Always-on-top, draggable, semi-transparent hardware overlay showing live FPS, GPU core clock (1004 MHz vs 300 MHz throttle detection), CPU load, and RAM usage with a click-through `📌 PIN` mode! (Toggle with **`Option + Shift + H`**).
 * **❄️ Fan Turbo Assistant:** Integration with *Macs Fan Control* to eliminate Boot Camp heat soak on the dual-fan, single shared copper heatpipe before launching games.
 * **Live Activity Log:** Real-time console tracking all registry modifications.
@@ -51,7 +51,8 @@ You have a native, dark-themed Windows desktop application ready to run:
 #### Tab 3: ✨ UNIVERSAL FSR & DETAIL UPSCALER
 * **AMD FidelityFX FSR (EASU + RCAS):** Injects spatial upscaling and contrast-adaptive sharpening into ANY windowed game.
 * **✨ Custom Universal SSR HLSL Shader (`SSR_Cinematic_Enhancer.hlsl`):** Works on GTA V, Where Winds Meet (`wwm.exe`), and ANY DX/Vulkan/OpenGL game via Magpie! Runs as a 5-tap pre-EASU pass with multi-tap specular puddle/reflection bloom, filmic shadow depth, selective surface vibrance, and anti-banding dither with presets (*Subtle Realism*, *Vivid Wet-Road*, *Cyberpunk Neon Glow*) plus **`🤖 AUTO-DETECT & TUNE SSR`** (auto-inspects 99% CPU Cap, free RAM, display aspect ratio, tunes GTA V `settings.xml` & Where Winds Meet `win_config`, disables `ReflectionMSAA`, and protects running games from overwriting configs).
-* **Gaming Resolution Presets & Smart FPS Cap:** Instant resolution switcher auto-adapted to your active display (`1280×800`/`720p`, `1440×900`/`1600×900`, `1680×1050`, and Native restore) plus **Magpie Smart FPS Cap** (`45 FPS` / `60 FPS` / `Uncapped`) to prevent shared heatpipe & VRM thermal soak during long sessions.
+* **Gaming Resolution Presets & Smart FPS Cap:** Instant resolution switcher auto-adapted to your active display (`1280×800`/`720p`, `1440×900`/`1600×900`, `1680×1050`, and Native restore) plus **Magpie Smart FPS Cap** (`30 FPS Constant (Zero Frame-Skip / Coolest)` — exact 2:1 divisor of 60 Hz / `40 FPS Smooth (Thermal Guard)` / `45 FPS` / `60 FPS` / `Uncapped`) with `duplicateFrameDetectionMode: 0` to eliminate cadence judder and prevent shared heatpipe & VRM thermal soak.
+* **🔒 Live Anti-Stutter / Frame-Pacing Guard:** Dedicated Tab 3 card (synced with Tab 1) that activates `0.5ms` `NtSetTimerResolution`, locks Magpie to steady `30 FPS Constant` (or `40 FPS Smooth`), and runs a safe 10s watch loop keeping known games at `High` priority (never `RealTime`) while trimming idle background working sets every 30s (strictly skipping `SessionId == 0`, active games, audio/fan tools, and anti-cheat processes).
 * **Massive FPS Gain:** Run games at 720p or 900p, press **`ALT + F11`** (or **`WIN + SHIFT + A`**), and game upscales to native fullscreen with 40%–80% higher FPS.
 * **⚡ 5-Second Auto-Upscale Button:** Click the button, switch to your game window, and it automatically triggers scaling without fumbling with keyboard shortcuts!
 * **MacBook Pro Touch Bar Friendly:** Includes hotkey switcher (Alt+F11, Win+Shift+A, F11, Ctrl+Alt+S) and reminders for the `fn` key on Touch Bar.
@@ -114,3 +115,9 @@ To get the full modern AMD Adrenalin suite:
 * **FSR / Upscaling:** Enable AMD FidelityFX Super Resolution (FSR) on *Quality* or *Balanced* mode wherever supported.
 * **Reflections & Lighting:** **Always select Screen Space Reflections (SSR)** instead of Hardware Ray Tracing (DXR). Polaris 21 has no dedicated RT hardware; SSR gives 90% of the visual fidelity at a stable 60 FPS without overheating the CPU/GPU shared heatpipe.
 * **Texture Quality:** Keep textures on *Medium* to respect the 4 GB VRAM limit and avoid pagefile stuttering.
+
+---
+
+## 🧠 Reusable Agent Skill
+
+* [`.agents/skills/radeon-bootcamp-frame-pacing/SKILL.md`](.agents/skills/radeon-bootcamp-frame-pacing/SKILL.md) — Documents safe Boot Camp frame-pacing diagnostics, Magpie 30/40/60 FPS UTF-8 no-BOM configuration, 5-tap pre-EASU HLSL ordering, Live Anti-Stutter Guard safety boundaries, and C# 5 rebuild instructions.

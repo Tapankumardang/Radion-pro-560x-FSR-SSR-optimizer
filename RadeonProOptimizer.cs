@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -234,6 +235,12 @@ namespace RadeonPerformanceCenter
         private Button btnToggleUlps, btnToggleHags, btnToggleTdr, btnToggleCpuCap, btnToggleGameDvr, btnToggleRis;
         private Button btnToggleMpo, btnToggleUnpark, btnToggleTimerRes, btnRamBoost;
         private bool isTimerResActive = false;
+        private bool isFramePacingGuardActive = false;
+        private Timer framePacingWatchTimer;
+        private int framePacingTickCount = 0;
+        private int lastBoostedGameCount = 0;
+        private Button btnFramePacingGuardTab1, btnFramePacingGuardTab3;
+        private Label lblFramePacingStatus;
         private RichTextBox txtLog;
         #endregion
 
@@ -323,7 +330,7 @@ namespace RadeonPerformanceCenter
             };
             this.FormClosing += (s, e) => {
                 try { UnregisterHotKey(this.Handle, HOTKEY_MINIHUD_ID); } catch { }
-                if (isTimerResActive) { uint cur; try { NtSetTimerResolution(5000, false, out cur); } catch { } }
+                DisableFramePacingGuard(false, true);
                 if (miniHudForm != null && !miniHudForm.IsDisposed) miniHudForm.Close();
                 CleanupOpenGL();
             };
@@ -461,26 +468,30 @@ namespace RadeonPerformanceCenter
             pnlMaster.Dock = DockStyle.Fill;
             pnlMaster.FlowDirection = FlowDirection.LeftToRight;
 
-            Button btnApplyAll = CreateModernButton("🚀  APPLY ALL", Color.FromArgb(20, 140, 80), Color.White, 195, 40);
+            Button btnApplyAll = CreateModernButton("🚀  APPLY ALL", Color.FromArgb(20, 140, 80), Color.White, 150, 40);
             btnApplyAll.Click += (s, e) => ApplyAllOptimizations();
 
-            Button btnRestore = CreateModernButton("↺  RESTORE DEFAULTS", Color.FromArgb(70, 75, 90), Color.FromArgb(220, 225, 235), 185, 40);
+            Button btnRestore = CreateModernButton("↺  RESTORE DEFAULTS", Color.FromArgb(70, 75, 90), Color.FromArgb(220, 225, 235), 168, 40);
             btnRestore.Click += (s, e) => RestoreDefaults();
 
-            Button btnRefresh = CreateModernButton("🔄  REFRESH", Color.FromArgb(40, 45, 60), cCyan, 120, 40);
+            Button btnRefresh = CreateModernButton("🔄  REFRESH", Color.FromArgb(40, 45, 60), cCyan, 110, 40);
             btnRefresh.Click += (s, e) => { RefreshAllOptimizerStates(); Log("Refreshed system and optimization states."); };
 
-            btnToggleMiniHud = CreateModernButton("🔥  MINI-HUD: OFF", Color.FromArgb(170, 40, 40), Color.White, 175, 40);
+            btnToggleMiniHud = CreateModernButton("🔥  MINI-HUD: OFF", Color.FromArgb(170, 40, 40), Color.White, 154, 40);
             btnToggleMiniHud.Click += (s, e) => ToggleMiniHud();
 
-            btnFanTurboHelper = CreateModernButton("❄️  FAN TURBO HELPER", Color.FromArgb(30, 90, 160), Color.White, 185, 40);
+            btnFanTurboHelper = CreateModernButton("❄️  FAN TURBO", Color.FromArgb(30, 90, 160), Color.White, 134, 40);
             btnFanTurboHelper.Click += (s, e) => OnFanTurboClick();
+
+            btnFramePacingGuardTab1 = CreateModernButton("🔒  30 FPS GUARD: OFF", Color.FromArgb(45, 50, 68), cTextMain, 210, 40);
+            btnFramePacingGuardTab1.Click += (s, e) => ToggleFramePacingGuard();
 
             pnlMaster.Controls.Add(btnApplyAll);
             pnlMaster.Controls.Add(btnRestore);
             pnlMaster.Controls.Add(btnRefresh);
             pnlMaster.Controls.Add(btnToggleMiniHud);
             pnlMaster.Controls.Add(btnFanTurboHelper);
+            pnlMaster.Controls.Add(btnFramePacingGuardTab1);
             mainLayout.Controls.Add(pnlMaster, 0, 1);
 
             // Row 2: Tweak Cards (2 cols x 5 rows)
@@ -913,40 +924,49 @@ namespace RadeonPerformanceCenter
             Size resCrisp = PickSupportedResolution(new int[,] { { 1680, 1050 }, { 1600, 900 } });
             Size resNative = GetMaxSupportedResolution();
 
-            Button btnRes800p = CreateModernButton(string.Format("{0}x{1} (Max FPS)", resMaxFps.Width, resMaxFps.Height), Color.FromArgb(38, 45, 62), Color.White, 138, 34);
+            Button btnRes800p = CreateModernButton(string.Format("{0}x{1} (Max FPS)", resMaxFps.Width, resMaxFps.Height), Color.FromArgb(38, 45, 62), Color.White, 132, 34);
             btnRes800p.Location = new Point(16, 66);
             btnRes800p.Click += (s, e) => SetDisplayResolution16x10(resMaxFps.Width, resMaxFps.Height);
 
-            Button btnRes900p = CreateModernButton(string.Format("{0}x{1} (Balanced)", resBalanced.Width, resBalanced.Height), Color.FromArgb(38, 45, 62), Color.White, 140, 34);
-            btnRes900p.Location = new Point(160, 66);
+            Button btnRes900p = CreateModernButton(string.Format("{0}x{1} (Balanced)", resBalanced.Width, resBalanced.Height), Color.FromArgb(38, 45, 62), Color.White, 134, 34);
+            btnRes900p.Location = new Point(154, 66);
             btnRes900p.Click += (s, e) => SetDisplayResolution16x10(resBalanced.Width, resBalanced.Height);
 
-            Button btnRes1050p = CreateModernButton(string.Format("{0}x{1} (Crisp)", resCrisp.Width, resCrisp.Height), Color.FromArgb(38, 45, 62), Color.White, 134, 34);
-            btnRes1050p.Location = new Point(306, 66);
+            Button btnRes1050p = CreateModernButton(string.Format("{0}x{1} (Crisp)", resCrisp.Width, resCrisp.Height), Color.FromArgb(38, 45, 62), Color.White, 128, 34);
+            btnRes1050p.Location = new Point(294, 66);
             btnRes1050p.Click += (s, e) => SetDisplayResolution16x10(resCrisp.Width, resCrisp.Height);
 
-            Button btnResNative = CreateModernButton(string.Format("{0}x{1} (Native)", resNative.Width, resNative.Height), Color.FromArgb(60, 65, 82), cTextMain, 136, 34);
-            btnResNative.Location = new Point(446, 66);
+            Button btnResNative = CreateModernButton(string.Format("{0}x{1} (Native)", resNative.Width, resNative.Height), Color.FromArgb(60, 65, 82), cTextMain, 132, 34);
+            btnResNative.Location = new Point(428, 66);
             btnResNative.Click += (s, e) => SetDisplayResolution16x10(resNative.Width, resNative.Height);
 
-            Label lblFpsCap = new Label { Text = "MAGPIE SMART FPS CAP:", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = cTextMuted, Location = new Point(594, 36), AutoSize = true };
+            Label lblFpsCap = new Label { Text = "MAGPIE SMART FPS CAP:", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = cTextMuted, Location = new Point(568, 36), AutoSize = true };
             cmbFsrFpsCap = new ComboBox();
             cmbFsrFpsCap.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbFsrFpsCap.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+            cmbFsrFpsCap.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
             cmbFsrFpsCap.BackColor = Color.FromArgb(30, 32, 42);
             cmbFsrFpsCap.ForeColor = Color.White;
-            cmbFsrFpsCap.Location = new Point(594, 68);
-            cmbFsrFpsCap.Size = new Size(206, 28);
+            cmbFsrFpsCap.Location = new Point(568, 68);
+            cmbFsrFpsCap.Size = new Size(240, 28);
+            cmbFsrFpsCap.DropDownWidth = 340;
             cmbFsrFpsCap.Items.Add("Uncapped (Max FPS)");
             cmbFsrFpsCap.Items.Add("60 FPS Cap (Smooth & Cool)");
-            cmbFsrFpsCap.Items.Add("45 FPS Cap (Best Thermals)");
+            cmbFsrFpsCap.Items.Add("45 FPS Cap (Balanced)");
+            cmbFsrFpsCap.Items.Add("40 FPS Smooth (Thermal Guard)");
+            cmbFsrFpsCap.Items.Add("30 FPS Constant (Zero Frame-Skip / Coolest)");
 
             int fpsCapIdx = GetCurrentMagpieFpsCapIndex();
-            cmbFsrFpsCap.SelectedIndex = fpsCapIdx;
+            isUpdatingSsrUi = true;
+            try { cmbFsrFpsCap.SelectedIndex = fpsCapIdx; }
+            finally { isUpdatingSsrUi = false; }
             cmbFsrFpsCap.SelectedIndexChanged += (s, e) => {
+                if (isUpdatingSsrUi) return;
                 if (cmbFsrFpsCap.SelectedIndex == 1) SetMagpieFpsCap(true, 60);
                 else if (cmbFsrFpsCap.SelectedIndex == 2) SetMagpieFpsCap(true, 45);
+                else if (cmbFsrFpsCap.SelectedIndex == 3) SetMagpieFpsCap(true, 40);
+                else if (cmbFsrFpsCap.SelectedIndex == 4) SetMagpieFpsCap(true, 30);
                 else SetMagpieFpsCap(false, 60);
+                UpdateFramePacingUi();
             };
 
             pnlDisplayTune.Controls.AddRange(new Control[] { lblDispTitle, lblCurrentRes, btnRes800p, btnRes900p, btnRes1050p, btnResNative, lblFpsCap, cmbFsrFpsCap });
@@ -954,6 +974,27 @@ namespace RadeonPerformanceCenter
                 using (Pen p = new Pen(cBorder, 1)) e.Graphics.DrawRectangle(p, 0, 0, pnlDisplayTune.Width - 1, pnlDisplayTune.Height - 1);
             };
             flow.Controls.Add(pnlDisplayTune);
+
+            // 1c. Live Anti-Stutter / Frame-Pacing Guard Panel
+            Panel pnlFramePacingGuard = new Panel();
+            pnlFramePacingGuard.Size = new Size(820, 96);
+            pnlFramePacingGuard.BackColor = cCardBg;
+            pnlFramePacingGuard.Padding = new Padding(16);
+            pnlFramePacingGuard.Margin = new Padding(0, 0, 0, 14);
+
+            Label lblGuardTitle = new Label { Text = "LIVE ANTI-STUTTER / FRAME-PACING GUARD (ZERO FRAME-SKIP MODE)", Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = cCyan, Location = new Point(16, 10), AutoSize = true };
+            btnFramePacingGuardTab3 = CreateModernButton("🔒  LOCK 30 FPS + STUTTER GUARD: OFF", Color.FromArgb(45, 50, 68), cTextMain, 316, 40);
+            btnFramePacingGuardTab3.Location = new Point(16, 36);
+            btnFramePacingGuardTab3.Click += (s, e) => ToggleFramePacingGuard();
+
+            Label lblGuardDesc = new Label { Text = "Locks 0.5ms timer, Magpie 30/40 FPS cap & High game priority watch (max High, skips Session 0 & anti-cheat).", Font = new Font("Segoe UI", 8.2f), ForeColor = cTextMuted, Location = new Point(344, 30), Size = new Size(462, 30) };
+            lblFramePacingStatus = new Label { Text = "Status: OFF | Timer: 15.6ms | Cap: Detecting... | Boosted Games: 0", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), ForeColor = cTextMuted, Location = new Point(344, 62), AutoSize = true };
+
+            pnlFramePacingGuard.Controls.AddRange(new Control[] { lblGuardTitle, btnFramePacingGuardTab3, lblGuardDesc, lblFramePacingStatus });
+            pnlFramePacingGuard.Paint += (s, e) => {
+                using (Pen p = new Pen(cBorder, 1)) e.Graphics.DrawRectangle(p, 0, 0, pnlFramePacingGuard.Width - 1, pnlFramePacingGuard.Height - 1);
+            };
+            flow.Controls.Add(pnlFramePacingGuard);
 
             // 2. MacBook Pro Touch Bar Important Notice Panel
             Panel pnlMacBook = new Panel();
@@ -1099,14 +1140,19 @@ namespace RadeonPerformanceCenter
             string cfgPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Magpie\config\v5\config.json");
             if (!File.Exists(cfgPath)) return;
 
+            bool wasRunning = (Process.GetProcessesByName("Magpie").Length > 0);
+            if (wasRunning)
+            {
+                StopFsrEngine();
+                System.Threading.Thread.Sleep(400);
+            }
+
             string json = File.ReadAllText(cfgPath);
             json = transformJson(json);
             File.WriteAllText(cfgPath, json, new System.Text.UTF8Encoding(false));
 
-            if (Process.GetProcessesByName("Magpie").Length > 0)
+            if (wasRunning)
             {
-                StopFsrEngine();
-                System.Threading.Thread.Sleep(400);
                 StartFsrEngine();
             }
         }
@@ -1132,12 +1178,15 @@ namespace RadeonPerformanceCenter
                 {
                     string json = File.ReadAllText(cfgPath);
                     Match mEn = Regex.Match(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)");
-                    Match mMax = Regex.Match(json, @"""maxFrameRate""\s*:\s*(\d+)");
+                    Match mMax = Regex.Match(json, @"""maxFrameRate""\s*:\s*(\d+(?:\.\d+)?)");
                     if (mEn.Success && mEn.Groups[1].Value == "true")
                     {
-                        int fps = 60;
-                        if (mMax.Success) int.TryParse(mMax.Groups[1].Value, out fps);
-                        return (fps <= 48) ? 2 : 1;
+                        double fps = 60.0;
+                        if (mMax.Success) double.TryParse(mMax.Groups[1].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out fps);
+                        if (fps <= 32.0) return 4;
+                        if (fps <= 42.0) return 3;
+                        if (fps <= 48.0) return 2;
+                        return 1;
                     }
                 }
             }
@@ -1152,9 +1201,11 @@ namespace RadeonPerformanceCenter
                 UpdateMagpieConfig(json => {
                     json = Regex.Replace(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)", "\"frameRateLimiterEnabled\": " + (enabled ? "true" : "false"));
                     json = Regex.Replace(json, @"""maxFrameRate""\s*:\s*\d+(?:\.\d+)?", "\"maxFrameRate\": " + maxFps + ".0");
+                    json = Regex.Replace(json, @"""duplicateFrameDetectionMode""\s*:\s*\d+", "\"duplicateFrameDetectionMode\": 0");
+                    json = Regex.Replace(json, @"""enableStatisticsForDynamicDetection""\s*:\s*(true|false)", "\"enableStatisticsForDynamicDetection\": false");
                     return json;
                 });
-                Log(enabled ? string.Format("Magpie Smart FPS Cap set to {0} FPS (prevents thermal soak).", maxFps) : "Magpie FPS Cap set to Uncapped.");
+                Log(enabled ? string.Format("Magpie Smart FPS Cap set to {0} FPS (duplicate-frame skip disabled for steady pacing).", maxFps) : "Magpie FPS Cap set to Uncapped.");
             }
             catch (Exception ex)
             {
@@ -1398,6 +1449,27 @@ namespace RadeonPerformanceCenter
 
             // 2. Tune Magpie pipeline cleanly for 3D gaming (Pre-EASU SSR + zero duplicate-frame overhead)
             isUpdatingSsrUi = true;
+            int curFpsIdx = GetCurrentMagpieFpsCapIndex();
+            bool preserveUserPacing = isFramePacingGuardActive || curFpsIdx == 3 || curFpsIdx == 4;
+            bool effectiveFpsCap = enableFpsCap || preserveUserPacing;
+            int targetMaxFps = 60;
+            int targetFpsCapIdx = 0;
+            if (enableFpsCap)
+            {
+                targetMaxFps = 30;
+                targetFpsCapIdx = 4;
+            }
+            else if (isFramePacingGuardActive || curFpsIdx == 4)
+            {
+                targetMaxFps = 30;
+                targetFpsCapIdx = 4;
+            }
+            else if (curFpsIdx == 3)
+            {
+                targetMaxFps = 40;
+                targetFpsCapIdx = 3;
+            }
+
             try
             {
                 double bloom = (targetSsrPreset == 1) ? 0.16 : 0.30;
@@ -1408,8 +1480,9 @@ namespace RadeonPerformanceCenter
                 UpdateMagpieConfig(json => {
                     json = Regex.Replace(json, @"""scalingMode""\s*:\s*\d+", "\"scalingMode\": 7");
                     json = Regex.Replace(json, @"""duplicateFrameDetectionMode""\s*:\s*\d+", "\"duplicateFrameDetectionMode\": 0");
-                    json = Regex.Replace(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)", "\"frameRateLimiterEnabled\": " + (enableFpsCap ? "true" : "false"));
-                    json = Regex.Replace(json, @"""maxFrameRate""\s*:\s*\d+(?:\.\d+)?", "\"maxFrameRate\": 60.0");
+                    json = Regex.Replace(json, @"""enableStatisticsForDynamicDetection""\s*:\s*(true|false)", "\"enableStatisticsForDynamicDetection\": false");
+                    json = Regex.Replace(json, @"""frameRateLimiterEnabled""\s*:\s*(true|false)", "\"frameRateLimiterEnabled\": " + (effectiveFpsCap ? "true" : "false"));
+                    json = Regex.Replace(json, @"""maxFrameRate""\s*:\s*\d+(?:\.\d+)?", "\"maxFrameRate\": " + targetMaxFps + ".0");
                     json = Regex.Replace(json, @"""specularBloom""\s*:\s*[0-9\.]+", "\"specularBloom\": " + bloom.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
                     json = Regex.Replace(json, @"""shadowDepth""\s*:\s*[0-9\.]+", "\"shadowDepth\": " + shadow.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
                     json = Regex.Replace(json, @"""vibrance""\s*:\s*[0-9\.]+", "\"vibrance\": " + vib.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
@@ -1419,11 +1492,12 @@ namespace RadeonPerformanceCenter
 
                 isCinematicSsrActive = true;
                 if (cmbSsrPreset != null) cmbSsrPreset.SelectedIndex = targetSsrPreset;
-                if (cmbFsrFpsCap != null) cmbFsrFpsCap.SelectedIndex = enableFpsCap ? 1 : 0;
+                if (cmbFsrFpsCap != null) cmbFsrFpsCap.SelectedIndex = targetFpsCapIdx;
             }
             catch (Exception ex) { Log("Magpie Auto-Tune error: " + ex.Message); }
             finally { isUpdatingSsrUi = false; }
             UpdateFsrStatus();
+            UpdateFramePacingUi();
 
             // 3. Configure GTA V safely (only write if GTA5.exe is closed so game doesn't overwrite on exit)
             string gtaPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), @"Rockstar Games\GTA V\settings.xml");
@@ -1520,7 +1594,7 @@ namespace RadeonPerformanceCenter
                 maxDisp.Width, maxDisp.Height,
                 has16x10 ? "16:10 Ready" : "16:9 Screen",
                 targetRes.Width, targetRes.Height, detectReason,
-                enableFpsCap ? "60 FPS Cap" : "Uncapped",
+                effectiveFpsCap ? string.Format("{0} FPS Cap (Zero Frame-Skip)", targetMaxFps) : "Uncapped",
                 gtaStatusLine,
                 wwmStatusLine);
 
@@ -1975,6 +2049,7 @@ namespace RadeonPerformanceCenter
                 lblRamBoostStatus.ForeColor = cCyan;
             }
             btnRamBoost.Text = "⚡ Boost Now";
+            UpdateFramePacingUi();
         }
 
         private int GetUlpsState()
@@ -2305,20 +2380,35 @@ namespace RadeonPerformanceCenter
             RefreshAllOptimizerStates();
         }
 
+        private HashSet<string> CreateKnownGamesSet()
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "GTA5", "PlayGTAV", "wwm", "Cyberpunk2077", "witcher3", "RDR2", "eldenring",
+                "rpcs3", "pcsx2", "dolphin", "yuzu", "cs2", "javaw", "FortniteClient-Win64-Shipping"
+            };
+        }
+
+        private HashSet<string> CreateProtectedTrimSkipSet()
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                "Idle", "System", "Registry", "smss", "csrss", "wininit", "services", "lsass",
+                "svchost", "dwm", "explorer", "RadeonOptimizer", "Magpie", "Memory Compression",
+                "MacsFanControl", "audiodg",
+                "EasyAntiCheat", "EasyAntiCheat_EOS", "EAC", "BEService", "BattlEye",
+                "vgc", "vgtray", "ACE-Tray", "SGuard64", "SGuardSvc64", "NeProtect",
+                "GameGuard", "mhyprot2", "EOSOverlayRenderer-Win64-Shipping"
+            };
+        }
+
         private void BoostMemoryAndGames()
         {
             int trimmedCount = 0;
             List<string> boostedGames = new List<string>();
-            HashSet<string> skipProcs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                "Idle", "System", "Registry", "smss", "csrss", "wininit", "services", "lsass",
-                "svchost", "dwm", "explorer", "RadeonOptimizer", "Magpie", "Memory Compression"
-            };
-            HashSet<string> knownGames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                "GTA5", "PlayGTAV", "wwm", "Cyberpunk2077", "witcher3", "RDR2", "eldenring",
-                "rpcs3", "pcsx2", "dolphin", "yuzu", "cs2", "javaw", "FortniteClient-Win64-Shipping"
-            };
+            HashSet<string> skipProcs = CreateProtectedTrimSkipSet();
+            HashSet<string> knownGames = CreateKnownGamesSet();
             HashSet<string> nonGameApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                "chrome", "msedge", "firefox", "brave", "code", "devenv", "steamwebhelper", "Discord", "obs64"
+                "chrome", "msedge", "firefox", "brave", "code", "devenv", "steamwebhelper", "Discord", "obs64",
+                "Antigravity IDE", "agy", "EpicGamesLauncher", "EpicWebHelper", "steam", "Steam"
             };
 
             MEMORYSTATUSEX beforeMem = new MEMORYSTATUSEX();
@@ -2332,6 +2422,7 @@ namespace RadeonPerformanceCenter
 
                     bool isKnownGame = knownGames.Contains(p.ProcessName);
                     bool isHeavyWindowedApp = !nonGameApps.Contains(p.ProcessName)
+                        && !isKnownGame
                         && p.MainWindowHandle != IntPtr.Zero
                         && p.WorkingSet64 > 450L * 1024L * 1024L;
 
@@ -2363,6 +2454,211 @@ namespace RadeonPerformanceCenter
             Log(string.Format("🚀 Pre-Game Boost complete: Trimmed {0} background apps (+{1:F0} MB RAM freed). High-Priority Games: {2}",
                 trimmedCount, freedMb, gameText));
             UpdateHardwareMetrics();
+        }
+
+        private void ToggleFramePacingGuard()
+        {
+            if (!isFramePacingGuardActive)
+            {
+                isFramePacingGuardActive = true;
+                framePacingTickCount = 0;
+
+                try
+                {
+                    if (!isTimerResActive)
+                    {
+                        uint cur;
+                        int status = NtSetTimerResolution(5000, true, out cur);
+                        if (status == 0)
+                        {
+                            isTimerResActive = true;
+                            Log(string.Format("⚡ Frame-Pacing Guard enabled 0.5ms timer resolution (active tick: {0:F2}ms).", cur / 10000.0));
+                        }
+                    }
+                }
+                catch (Exception ex) { Log("Frame-Pacing timer error: " + ex.Message); }
+
+                if (cmbFsrFpsCap != null && cmbFsrFpsCap.SelectedIndex != 3 && cmbFsrFpsCap.SelectedIndex != 4)
+                {
+                    isUpdatingSsrUi = true;
+                    try { cmbFsrFpsCap.SelectedIndex = 4; }
+                    finally { isUpdatingSsrUi = false; }
+                    SetMagpieFpsCap(true, 30);
+                }
+                EnsureFsrRunningInBackground();
+
+                RunSafeFramePacingSweep(true);
+
+                if (framePacingWatchTimer != null)
+                {
+                    framePacingWatchTimer.Stop();
+                    framePacingWatchTimer.Dispose();
+                }
+                framePacingWatchTimer = new Timer();
+                framePacingWatchTimer.Interval = 10000;
+                framePacingWatchTimer.Tick += (s, e) => OnFramePacingWatchTick();
+                framePacingWatchTimer.Start();
+
+                Log("🔒 Live Anti-Stutter / Frame-Pacing Guard ENABLED (0.5ms timer + Magpie steady cap + 10s game priority watch).");
+                RefreshAllOptimizerStates();
+                UpdateFsrStatus();
+            }
+            else
+            {
+                DisableFramePacingGuard(true, true);
+            }
+        }
+
+        private void DisableFramePacingGuard(bool logAction, bool restoreGamePriority)
+        {
+            bool wasActive = isFramePacingGuardActive;
+            isFramePacingGuardActive = false;
+
+            if (framePacingWatchTimer != null)
+            {
+                try { framePacingWatchTimer.Stop(); framePacingWatchTimer.Dispose(); } catch { }
+                framePacingWatchTimer = null;
+            }
+
+            if (isTimerResActive)
+            {
+                uint cur;
+                try { NtSetTimerResolution(5000, false, out cur); } catch { }
+                isTimerResActive = false;
+            }
+
+            if (restoreGamePriority)
+            {
+                HashSet<string> knownGames = CreateKnownGamesSet();
+                foreach (Process p in Process.GetProcesses())
+                {
+                    try
+                    {
+                        if (p.SessionId == 0) continue;
+                        if (knownGames.Contains(p.ProcessName) && p.PriorityClass == ProcessPriorityClass.High)
+                        {
+                            p.PriorityClass = ProcessPriorityClass.Normal;
+                        }
+                    }
+                    catch { }
+                    finally { try { p.Dispose(); } catch { } }
+                }
+            }
+
+            lastBoostedGameCount = 0;
+            if (logAction && wasActive)
+            {
+                Log("🔓 Live Anti-Stutter / Frame-Pacing Guard DISABLED (released 0.5ms timer & restored Normal game priority).");
+            }
+
+            if (!this.IsDisposed)
+            {
+                RefreshAllOptimizerStates();
+                UpdateFsrStatus();
+            }
+        }
+
+        private void OnFramePacingWatchTick()
+        {
+            if (!isFramePacingGuardActive) return;
+            framePacingTickCount++;
+            bool trimRam = (framePacingTickCount % 3 == 0);
+            RunSafeFramePacingSweep(trimRam);
+        }
+
+        private void RunSafeFramePacingSweep(bool trimRam)
+        {
+            int boostedGames = 0;
+            int trimmedCount = 0;
+            HashSet<string> skipProcs = CreateProtectedTrimSkipSet();
+            HashSet<string> knownGames = CreateKnownGamesSet();
+
+            foreach (Process p in Process.GetProcesses())
+            {
+                try
+                {
+                    if (p.SessionId == 0) continue;
+
+                    if (knownGames.Contains(p.ProcessName))
+                    {
+                        if (p.PriorityClass != ProcessPriorityClass.High)
+                        {
+                            p.PriorityClass = ProcessPriorityClass.High;
+                        }
+                        boostedGames++;
+                    }
+                    else if (trimRam && !skipProcs.Contains(p.ProcessName))
+                    {
+                        if (EmptyWorkingSet(p.Handle)) trimmedCount++;
+                    }
+                }
+                catch { }
+                finally { try { p.Dispose(); } catch { } }
+            }
+
+            lastBoostedGameCount = boostedGames;
+            UpdateFramePacingUi();
+            if (trimRam && lblRamBoostStatus != null && !lblRamBoostStatus.IsDisposed)
+            {
+                lblRamBoostStatus.Text = string.Format("● GUARD ACTIVE ({0} games High, {1} bg trimmed)", boostedGames, trimmedCount);
+                lblRamBoostStatus.ForeColor = cGreen;
+            }
+        }
+
+        private void UpdateFramePacingUi()
+        {
+            if (this.IsDisposed) return;
+
+            if (btnFramePacingGuardTab1 != null && !btnFramePacingGuardTab1.IsDisposed)
+            {
+                if (isFramePacingGuardActive)
+                {
+                    btnFramePacingGuardTab1.Text = "🔒  30 FPS GUARD: ON";
+                    btnFramePacingGuardTab1.BackColor = Color.FromArgb(20, 140, 80);
+                    btnFramePacingGuardTab1.ForeColor = Color.White;
+                }
+                else
+                {
+                    btnFramePacingGuardTab1.Text = "🔒  30 FPS GUARD: OFF";
+                    btnFramePacingGuardTab1.BackColor = Color.FromArgb(45, 50, 68);
+                    btnFramePacingGuardTab1.ForeColor = cTextMain;
+                }
+            }
+
+            if (btnFramePacingGuardTab3 != null && !btnFramePacingGuardTab3.IsDisposed)
+            {
+                if (isFramePacingGuardActive)
+                {
+                    btnFramePacingGuardTab3.Text = "🔒  LOCKED 30 FPS + STUTTER GUARD: ON";
+                    btnFramePacingGuardTab3.BackColor = Color.FromArgb(20, 140, 80);
+                    btnFramePacingGuardTab3.ForeColor = Color.White;
+                }
+                else
+                {
+                    btnFramePacingGuardTab3.Text = "🔒  LOCK 30 FPS + STUTTER GUARD: OFF";
+                    btnFramePacingGuardTab3.BackColor = Color.FromArgb(140, 20, 80);
+                    btnFramePacingGuardTab3.ForeColor = Color.White;
+                }
+            }
+
+            if (lblFramePacingStatus != null && !lblFramePacingStatus.IsDisposed)
+            {
+                string capText = "Uncapped";
+                if (cmbFsrFpsCap != null)
+                {
+                    switch (cmbFsrFpsCap.SelectedIndex)
+                    {
+                        case 1: capText = "60 FPS"; break;
+                        case 2: capText = "45 FPS"; break;
+                        case 3: capText = "40 FPS Smooth"; break;
+                        case 4: capText = "30 FPS Constant"; break;
+                    }
+                }
+                string timerText = isTimerResActive ? "0.5ms" : "15.6ms";
+                lblFramePacingStatus.Text = string.Format("Status: {0} | Timer: {1} | Magpie Cap: {2} | Boosted Games: {3}",
+                    isFramePacingGuardActive ? "ACTIVE" : "OFF", timerText, capText, lastBoostedGameCount);
+                lblFramePacingStatus.ForeColor = isFramePacingGuardActive ? cGreen : cTextMuted;
+            }
         }
 
         private void ApplyAllOptimizations()
@@ -2509,6 +2805,7 @@ namespace RadeonPerformanceCenter
             }
 
             Log("Restoring factory defaults...");
+            DisableFramePacingGuard(false, true);
             bool hasError = false;
 
             // 1. Revert ULPS to 1 across all display subkeys
