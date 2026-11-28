@@ -2,7 +2,7 @@
 
 > **Project:** Radeon Pro 560X & Core i9-8950HK Performance Center  
 > **Repository Root:** `e:\apps\Graphic card improve`  
-> **Last Updated:** 2026-11-27  
+> **Last Updated:** 2026-11-28  
 > **Role:** Persistent memory ledger for AI assistants (Antigravity/Gemini) to maintain context across sessions, avoid repeating past mistakes, and record historical decisions.
 
 ---
@@ -144,6 +144,11 @@
     - *Root Cause:* When an executable file's PE header is damaged or corrupted on disk (e.g. initial bytes corrupted to `7E E4 30 DF` instead of `4D 5A 78 00`), the 64-bit Windows PE loader cannot recognize it as a valid Portable Executable and falls back to checking for legacy 16-bit DOS applications, displaying this misleading error dialog.
     - *Remedy:* Verify binary PE header via byte inspection to ensure `0x4D 0x5A` ('MZ') and machine architecture `0x8664` (`IMAGE_FILE_MACHINE_AMD64`). Download official clean 64-bit release (`Magpie-v0.13.0-x64.zip`) using `curl.exe` and unpack with `tar.exe -xf`. Verified live execution in 64-bit environment.
 
+14. **External `WinToUSB` (`E:\`) NTFS Truncation / Zero-Byte File Corruption:**
+    - *Problem:* On `2026-11-28`, 28 tracked files (including `Magpie.exe`, `FSR_EASU.hlsl`, `Lanczos.hlsl`, `NIS.hlsl`, `AreaTex.dds`) and 16 `.git/objects` loose blobs on drive `E:` (`WinToUSB` external NTFS volume) silently truncated to `0 bytes` overnight after reboot/restart.
+    - *Root Cause:* USB power-drop, sleep/wake disconnect, or dirty NTFS unmount on `WinToUSB` leaves pending sector writes truncated or zeroed.
+    - *Remedy:* Always keep work committed and pushed to GitHub (`origin`). If loose `.git/objects` corrupt to `0 bytes`, remove empty loose objects, fetch a fresh bare clone pack from GitHub, import `.git/objects/pack/*`, run `git checkout` on missing files, and advise running `chkdsk E: /f` before heavy disk writes.
+
 
 ---
 
@@ -196,6 +201,7 @@ Every modification made in this workspace is recorded here chronologically:
 | **2026-11-27** | **Bug Fix / Binary Integrity** | Diagnosed and resolved `"Unsupported 16-Bit Application"` fatal error on `FSR-Engine\Magpie.exe`. Root cause: on-disk PE header corrupted to `7E E4 30 DF`. Downloaded clean 64-bit release `Magpie-v0.13.0-x64.zip` via curl, extracted with tar.exe, verified AMD64 architecture (`0x8664`), and confirmed live execution (`PID 14100`, 64-bit native mode). Added Pitfall 13 to prevent recurrence. | `FSR-Engine/Magpie.exe`, `PROJECT_MEMORY.md` |
 | **2026-11-27** | **Safe Performance Pack & Plan Bugfix** | Added 5 safe, reversible upgrades and fixed duplicate power-plan bug across UI and CLI scripts: (1) Disabled Windows MPO (`OverlayTestMode=5`) to eliminate borderless/FSR stutter; (2) CPU Core Unparking (`CPMINCORES=100%` queried with `powercfg /qh`) on AC power; (3) In-memory `0.5ms` `NtSetTimerResolution` toggle (auto-releases on exit/restore); (4) Safe Pre-Game RAM (`EmptyWorkingSet` excluding Session 0 services) & Game `High` Priority booster; (5) Tab 3 adaptive Display Resolution Switcher (`EnumDisplaySettings` + `CDS_TEST` verified) & Magpie Smart FPS Cap (`frameRateLimiterEnabled` / `maxFrameRate`: 45 / 60 / Uncapped). Also refactored `FindOptimizedPowerPlanGuids()` to reuse existing custom schemes and clean them up on restore. Compiled `RadeonOptimizer.exe` and verified zero PS1 parse errors. | `RadeonProOptimizer.cs`, `RadeonOptimizer.exe`, `Optimize-GPU.ps1`, `Revert-Optimizations.ps1`, `README.md`, `PROJECT_MEMORY.md` |
 | **2026-11-27** | **SSR Engine Overhaul (Universal Shader, GTA V & 3D Benchmark)** | Upgraded SSR across all 3 layers: (1) Authored custom Magpie v4 HLSL shader `FSR-Engine/effects/SSR_Cinematic_Enhancer.hlsl` (multi-tap specular bloom, filmic S-curve shadow depth, local micro-contrast, smart vibrance, interleaved gradient dither) and wired Mode 7 in `config.json` with 4 selectable Tab 3 presets (`Off`, `Subtle Realism`, `Vivid Wet-Road`, `Cyberpunk Neon Glow`) working on GTA V and all games; (2) Updated GTA V `settings.xml` (`ReflectionQuality=2`, `SSAO=1`, `AnisotropicFiltering=8`, `Windowed=2` Borderless) and added 1-click `OptimizeInstalledGamesSsr()` configurator + universal game checklist in Tab 3; (3) Upgraded Tab 2 OpenGL SSR (`DrawSsrReflection`, `DrawSsrFloorGrid`) with 1,800 reflected particles, under-core specular puddle glow, wireframe reflection, and `Wet Mirror` vs `Satin Metal` surface toggle (`ToggleSsrSurface()`). | `FSR-Engine/effects/SSR_Cinematic_Enhancer.hlsl`, `C:\Users\tapan\AppData\Local\Magpie\config\v5\config.json`, `C:\Users\tapan\Documents\Rockstar Games\GTA V\settings.xml`, `RadeonProOptimizer.cs`, `RadeonOptimizer.exe`, `README.md`, `PROJECT_MEMORY.md` |
+| **2026-11-28** | **Safety Audit & WinToUSB Recovery** | Verified safety of all registry, `powercfg`, timer (`NtSetTimerResolution`), RAM/priority (`EmptyWorkingSet` excluding `SessionId == 0`), resolution (`CDS_TEST`), and HLSL tweaks (`d3dcompiler_47.dll` `ps_5_0` compile OK). Discovered `WinToUSB` (`E:\`) NTFS corruption had truncated 28 tracked files and 16 loose `.git/objects` to 0 bytes overnight; repaired `.git` pack from GitHub `origin`, restored all 28 files (`Magpie.exe` `4D 5A 78 00` verified, `git fsck --no-reflogs` clean), and added Pitfall 14. | `FSR-Engine/`, `.agents/`, `.git/objects/pack/`, `PROJECT_MEMORY.md` |
 
 
 
