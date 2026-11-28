@@ -1341,13 +1341,18 @@ namespace RadeonPerformanceCenter
                 {
                     string xml = File.ReadAllText(gtaPath);
                     xml = Regex.Replace(xml, @"<ReflectionQuality\s+value=""\d+""\s*/>", "<ReflectionQuality value=\"2\" />");
+                    xml = Regex.Replace(xml, @"<ReflectionMSAA\s+value=""\d+""\s*/>", "<ReflectionMSAA value=\"0\" />");
                     xml = Regex.Replace(xml, @"<SSAO\s+value=""\d+""\s*/>", "<SSAO value=\"1\" />");
                     xml = Regex.Replace(xml, @"<AnisotropicFiltering\s+value=""\d+""\s*/>", "<AnisotropicFiltering value=\"8\" />");
                     xml = Regex.Replace(xml, @"<Reflection_MipBlur\s+value=""(true|false)""\s*/>", "<Reflection_MipBlur value=\"true\" />");
+                    xml = Regex.Replace(xml, @"<UltraShadows_Enabled\s+value=""(true|false)""\s*/>", "<UltraShadows_Enabled value=\"false\" />");
+                    xml = Regex.Replace(xml, @"<Shadow_ParticleShadows\s+value=""(true|false)""\s*/>", "<Shadow_ParticleShadows value=\"false\" />");
+                    xml = Regex.Replace(xml, @"<ScreenWidth\s+value=""\d+""\s*/>", "<ScreenWidth value=\"1280\" />");
+                    xml = Regex.Replace(xml, @"<ScreenHeight\s+value=""\d+""\s*/>", "<ScreenHeight value=\"720\" />");
                     xml = Regex.Replace(xml, @"<Windowed\s+value=""\d+""\s*/>", "<Windowed value=\"2\" />");
                     File.WriteAllText(gtaPath, xml, new System.Text.UTF8Encoding(false));
                     gtaUpdated = true;
-                    Log("🎮 GTA V SSR optimized: High Reflections (2), 8x Anisotropic Filtering, SSAO (1), Borderless Windowed (2).");
+                    Log("🎮 GTA V SSR optimized: 1280x720 Borderless, High SSR (ReflectionMSAA=0), 8x AF, SSAO=1, UltraShadows=false.");
                 }
                 catch (Exception ex)
                 {
@@ -1356,7 +1361,7 @@ namespace RadeonPerformanceCenter
             }
 
             string summary = (gtaUpdated
-                ? "✅ GTA V (settings.xml) automatically tuned for sharp SSR:\n  • Reflection Quality: High (2) + MipBlur ON\n  • Anisotropic Filtering: 8x (sharp angled road puddles, ~0 FPS cost)\n  • Ambient Occlusion (SSAO): Normal (1)\n  • Display Mode: Borderless Windowed (ready for FSR + SSR)\n\n"
+                ? "✅ GTA V (settings.xml) tuned for HIGH FPS + Sharp SSR:\n  • Resolution: 1280x720 Borderless (gives FSR clean headroom for 55-60+ FPS)\n  • Reflection Quality: High (2) + ReflectionMSAA OFF (huge FPS save)\n  • Anisotropic Filtering: 8x + SSAO: Normal (1) + UltraShadows OFF\n\n"
                 : "ℹ️ GTA V settings.xml not detected at Documents\\Rockstar Games\\GTA V.\n\n") +
                 "🌍 FOR ALL OTHER GAMES (Cyberpunk, RDR2, Witcher 3, Elden Ring, Emulators):\n" +
                 "  1. Keep Magpie 'SSR ENHANCER: ON' (works automatically on EVERY game window!)\n" +
