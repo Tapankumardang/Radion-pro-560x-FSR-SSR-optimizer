@@ -1468,6 +1468,40 @@ namespace RadeonPerformanceCenter
                 }
             }
 
+            // 4. Configure Where Winds Meet (wwm.exe) window resolution safely
+            string wwmWinCfg = FindWhereWindsMeetWinConfig();
+            bool wwmRunning = (Process.GetProcessesByName("wwm").Length > 0);
+            string wwmStatusLine;
+            if (string.IsNullOrEmpty(wwmWinCfg))
+            {
+                wwmStatusLine = "ℹ️ Where Winds Meet install not detected in Epic Games folders.";
+            }
+            else if (wwmRunning)
+            {
+                wwmStatusLine = "⚠️ wwm.exe is RUNNING! Close Where Winds Meet first so it doesn't overwrite win_config on exit.";
+                Log("⚠️ Skipped editing Where Winds Meet win_config while wwm.exe is running.");
+            }
+            else
+            {
+                try
+                {
+                    string wJson = File.ReadAllText(wwmWinCfg);
+                    wJson = Regex.Replace(wJson, @"""w""\s*:\s*\d+", "\"w\":" + targetRes.Width);
+                    wJson = Regex.Replace(wJson, @"""h""\s*:\s*\d+", "\"h\":" + targetRes.Height);
+                    File.WriteAllText(wwmWinCfg, wJson, new System.Text.UTF8Encoding(false));
+                    string apiTagPath = Path.Combine(Path.GetDirectoryName(wwmWinCfg), "last_graphics_api.tag");
+                    string apiTag = File.Exists(apiTagPath) ? File.ReadAllText(apiTagPath).Trim() : "dx12";
+                    wwmStatusLine = string.Format("✅ Where Winds Meet tuned -> {0}x{1} 16:10 Window (API: {2}; recommend Textures/Fog/Shadows=Low-Med, Motion Blur=Off)",
+                        targetRes.Width, targetRes.Height, apiTag.ToUpper());
+                    Log(string.Format("🤖 Auto-Tuned Where Winds Meet win_config -> {0}x{1} (API: {2}).", targetRes.Width, targetRes.Height, apiTag));
+                }
+                catch (Exception ex)
+                {
+                    wwmStatusLine = "❌ Where Winds Meet config error: " + ex.Message;
+                    Log("Where Winds Meet config error: " + ex.Message);
+                }
+            }
+
             string summary = string.Format(
                 "🔍 AUTO-DETECTED HARDWARE STATE:\n" +
                 "  • 99% CPU Thermal Cap: {0}\n" +
@@ -1478,18 +1512,31 @@ namespace RadeonPerformanceCenter
                 "  • Pipeline: 5-Tap Pre-EASU SSR_Cinematic_Enhancer -> FSR EASU -> RCAS\n" +
                 "  • Duplicate Frame Compare: OFF (0) | FPS Cap: {8}\n\n" +
                 "🎮 GTA V STATUS:\n  {9}\n\n" +
+                "⚔️ WHERE WINDS MEET STATUS:\n  {10}\n\n" +
                 "🌍 ALL OTHER GAMES CHECKLIST:\n" +
-                "  • Set game to Borderless Windowed @ {5}x{6}, Reflections=High (no Ray Tracing), AF=8x, Reflection MSAA=Off.",
+                "  • Borderless Windowed @ {5}x{6}, Reflections=High (no Ray Tracing), AF=8x, Reflection MSAA=Off.",
                 cpuCapOk ? "ACTIVE (Optimal)" : "OFF (Throttle Risk! Enable in Tab 1)",
                 availRamGb,
                 maxDisp.Width, maxDisp.Height,
                 has16x10 ? "16:10 Ready" : "16:9 Screen",
                 targetRes.Width, targetRes.Height, detectReason,
                 enableFpsCap ? "60 FPS Cap" : "Uncapped",
-                gtaStatusLine);
+                gtaStatusLine,
+                wwmStatusLine);
 
             if (!gtaUpdated && !gtaRunning) Log("🤖 Auto-Tuned Magpie SSR pipeline cleanly.");
             MessageBox.Show(summary, "Auto-Detect & Game SSR Optimizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private string FindWhereWindsMeetWinConfig()
+        {
+            string[] roots = new string[] { @"E:\Program Files\Epic Games", @"C:\Program Files\Epic Games", @"D:\Program Files\Epic Games" };
+            foreach (string r in roots)
+            {
+                string candidate = Path.Combine(r, @"WhereWindsMeetUJJch\LocalData\win_config");
+                if (File.Exists(candidate)) return candidate;
+            }
+            return null;
         }
 
         private void StartFsrEngine()
@@ -2267,7 +2314,7 @@ namespace RadeonPerformanceCenter
                 "svchost", "dwm", "explorer", "RadeonOptimizer", "Magpie", "Memory Compression"
             };
             HashSet<string> knownGames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
-                "GTA5", "PlayGTAV", "Cyberpunk2077", "witcher3", "RDR2", "eldenring",
+                "GTA5", "PlayGTAV", "wwm", "Cyberpunk2077", "witcher3", "RDR2", "eldenring",
                 "rpcs3", "pcsx2", "dolphin", "yuzu", "cs2", "javaw", "FortniteClient-Win64-Shipping"
             };
             HashSet<string> nonGameApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
